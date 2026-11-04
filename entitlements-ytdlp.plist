@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- yt-dlp_macos 是 PyInstaller 打出来的单文件程序：
+	     运行时会把 Python 运行时和 .so 解压到 /var/folders 下的临时目录再加载。
+	     开启 Hardened Runtime 后，Library Validation 会拒绝加载这些「没有签名」的库，
+	     于是 yt-dlp 一启动就崩。这两个例外必须给到它，否则公证后链接下载功能直接失效。 -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

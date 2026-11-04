@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 主 App 的 entitlements：保持最小集。
+	     Developer ID 分发不需要 App Sandbox；
+	     如果将来要上 App Store，才需要加 com.apple.security.app-sandbox 等条目。 -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<false/>
+</dict>
+</plist>

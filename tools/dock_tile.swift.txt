@@ -1,0 +1,205 @@
+// MARK: - 底部程序坞上的方形磁贴
+
+/// 程序坞风格：一个个圆角方形磁贴，只放图标；鼠标悬停时由外面弹出名字气泡。
+final class SettingPill: NSView {
+    private(set) var title: String
+    private var symbol: String
+    private(set) var isOn: Bool
+    /// 纯动作按钮（比如「打开文件夹」）：没有开关状态，点了就执行
+    private let isAction: Bool
+    /// 开关型磁贴可以按状态换图标（「动态 / 静态」）
+    var onText: String?
+    var offText: String?
+    var onSymbol: String?
+    var offSymbol: String?
+    var onToggle: ((Bool) -> Void)?
+    var onTap: (() -> Void)?
+    /// 悬停时通知外面弹/收名字气泡
+    var onHoverChange: ((Bool) -> Void)?
+
+    static let side: CGFloat = 38
+
+    private let glass = GlassView(radius: 11, tint: 0.34, material: .hudWindow, chrome: .dark)
+    private let iconView = NSImageView()
+    private var hovered = false { didSet { restyle() } }
+    private var tracking: NSTrackingArea?
+
+    init(title: String, symbol: String, on: Bool) {
+        self.title = title
+        self.symbol = symbol
+        self.isOn = on
+        self.isAction = false
+        super.init(frame: .zero)
+        setup()
+    }
+
+    /// 同款外形，不带状态
+    init(actionTitle: String, symbol: String) {
+        self.title = actionTitle
+        self.symbol = symbol
+        self.isOn = false
+        self.isAction = true
+        super.init(frame: .zero)
+        setup()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private func setup() {
+        appearance = NSAppearance(named: .darkAqua)
+        translatesAutoresizingMaskIntoConstraints = false
+        addSubview(glass)
+
+        iconView.imageScaling = .scaleNone
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(iconView)
+
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: Self.side),
+            heightAnchor.constraint(equalToConstant: Self.side),
+
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
+            glass.topAnchor.constraint(equalTo: topAnchor),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            iconView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        restyle()
+    }
+
+    func setOn(_ on: Bool) {
+        guard !isAction, on != isOn else { return }
+        isOn = on
+        restyle()
+    }
+
+    /// 气泡里显示的名字（开关型跟着状态走：动态 / 静态）
+    var tipText: String { isAction ? title : shownText }
+
+    private var shownText: String {
+        guard !isAction else { return title }
+        return isOn ? (onText ?? title) : (offText ?? title)
+    }
+
+    private var shownSymbol: String {
+        guard !isAction else { return symbol }
+        return isOn ? (onSymbol ?? symbol) : (offSymbol ?? symbol)
+    }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: Self.side, height: Self.side) }
+
+    private func restyle() {
+        let ink: NSColor
+        if isAction {
+            ink = NSColor.white.withAlphaComponent(hovered ? 0.96 : 0.74)
+        } else if isOn {
+            ink = .white
+        } else {
+            ink = NSColor.white.withAlphaComponent(hovered ? 0.86 : 0.60)
+        }
+
+        if let base = NSImage(systemSymbolName: shownSymbol, accessibilityDescription: nil) {
+            let cfg = NSImage.SymbolConfiguration(pointSize: 15, weight: .medium)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
+            iconView.image = base.withSymbolConfiguration(cfg) ?? base
+        }
+
+        // 开着的染主题色（像程序坞里正在运行/被染色的图标），没开的保持中性深底
+        if isOn && !isAction {
+            glass.setColor(Brand.accent)
+            glass.setTint(hovered ? 0.80 : 0.68)
+        } else {
+            glass.setColor(.black)
+            glass.setTint(0.34 + (hovered ? 0.12 : 0))
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero,
+                               options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        onHoverChange?(true)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+        onHoverChange?(false)
+    }
+
+    /// 外部清场（窗口收起、失焦）
+    func clearHover() {
+        guard hovered else { return }
+        hovered = false
+        onHoverChange?(false)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if isAction {
+            onTap?()
+            return
+        }
+        isOn.toggle()
+        restyle()
+        onHoverChange?(hovered)
+        onToggle?(isOn)
+    }
+}
+
+// MARK: - 程序坞上方那枚名字气泡
+
+/// 鼠标压在磁贴上时浮出来的小标签，位置照着系统程序坞的标签做。
+final class DockTip: NSView {
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+        layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.80).cgColor
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        translatesAutoresizingMaskIntoConstraints = true
+        isHidden = true
+
+        label.font = .systemFont(ofSize: 10.5, weight: .medium)
+        label.textColor = .white
+        label.alignment = .center
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 9),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -9),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor, constant: 0.5),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// target 是磁贴在父视图坐标系里的位置
+    func show(text: String, above target: NSRect, in host: NSView) {
+        label.stringValue = text
+        let w = ceil((text as NSString).size(withAttributes: [.font: label.font!]).width) + 20
+        let h: CGFloat = 21
+        var x = target.midX - w / 2
+        x = min(max(4, x), max(4, host.bounds.width - w - 4))
+        let y = target.maxY + 7
+        frame = NSRect(x: x.rounded(), y: y.rounded(), width: w, height: h)
+        isHidden = false
+    }
+
+    func hide() {
+        isHidden = true
+    }
+}

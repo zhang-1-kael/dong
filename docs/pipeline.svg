@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" width="760" height="200" font-family="PingFang SC, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b7b9c7"/>
+    </marker>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7C6CF5"/>
+      <stop offset="100%" stop-color="#5B8DEF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 输入 -->
+  <rect x="12" y="48" width="118" height="38" rx="9" fill="#f4f5f8" stroke="#e2e3ea"/>
+  <text x="71" y="72" font-size="12.5" fill="#3a3d47" text-anchor="middle">本地视频</text>
+
+  <rect x="12" y="102" width="118" height="38" rx="9" fill="#f4f5f8" stroke="#e2e3ea"/>
+  <text x="71" y="126" font-size="12.5" fill="#3a3d47" text-anchor="middle">网页链接</text>
+
+  <!-- 汇合线 -->
+  <path d="M130 67 H148 V121 H130" fill="none" stroke="#d8dae3" stroke-width="1.4"/>
+  <path d="M148 94 H166" fill="none" stroke="#b7b9c7" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- 处理区 -->
+  <rect x="170" y="24" width="380" height="152" rx="14" fill="#fafaff" stroke="#e6e4f5"/>
+  <text x="182" y="44" font-size="11.5" fill="#6b6f7d" letter-spacing="0.3">本地处理 · 全程不上传</text>
+
+  <rect x="182" y="52" width="356" height="26" rx="7" fill="#ffffff" stroke="#ebebf2"/>
+  <circle cx="199" cy="65" r="3.2" fill="url(#accent)"/>
+  <text x="210" y="69" font-size="11.5" fill="#3a3d47"><tspan font-weight="600">探测</tspan><tspan fill="#7b7f8c">　读时长 / 帧率 / 真实尺寸（含旋转元数据）</tspan></text>
+
+  <rect x="182" y="82" width="356" height="26" rx="7" fill="#ffffff" stroke="#ebebf2"/>
+  <circle cx="199" cy="95" r="3.2" fill="url(#accent)"/>
+  <text x="210" y="99" font-size="11.5" fill="#3a3d47"><tspan font-weight="600">自动剪辑</tspan><tspan fill="#7b7f8c">　在运动量信号上找片头 / 片尾 / 角标</tspan></text>
+
+  <rect x="182" y="112" width="356" height="26" rx="7" fill="#ffffff" stroke="#ebebf2"/>
+  <circle cx="199" cy="125" r="3.2" fill="url(#accent)"/>
+  <text x="210" y="129" font-size="11.5" fill="#3a3d47"><tspan font-weight="600">转码</tspan><tspan fill="#7b7f8c">　缩放到屏幕框内 · delogo 补角标 · x264</tspan></text>
+
+  <rect x="182" y="142" width="356" height="26" rx="7" fill="#ffffff" stroke="#ebebf2"/>
+  <circle cx="199" cy="155" r="3.2" fill="url(#accent)"/>
+  <text x="210" y="159" font-size="11.5" fill="#3a3d47"><tspan font-weight="600">无缝循环</tspan><tspan fill="#7b7f8c">　首尾 0.4 秒交叉淡化，循环点消失</tspan></text>
+
+  <!-- 输出 -->
+  <path d="M550 100 H566" fill="none" stroke="#b7b9c7" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <rect x="570" y="58" width="178" height="84" rx="12" fill="url(#accent)" opacity="0.08"/>
+  <rect x="570" y="58" width="178" height="84" rx="12" fill="none" stroke="#cfc9f2"/>
+  <text x="659" y="88" font-size="13" font-weight="600" fill="#4a3fd0" text-anchor="middle">壁纸库</text>
+  <text x="659" y="108" font-size="11" fill="#6b6f7d" text-anchor="middle">桌面循环播放</text>
+  <text x="659" y="124" font-size="11" fill="#6b6f7d" text-anchor="middle">锁屏同款静帧</text>
+</svg>

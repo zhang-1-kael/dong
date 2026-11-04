@@ -1,0 +1,146 @@
+/// 液态玻璃：`withinWindow` 的真背景模糊（底下滚动的缩略图会被"喝"进来），
+/// 叠一层薄涂层控透明度，再加一圈上亮下暗的细边和顶部高光。
+/// 底座的透明度只由 tintAlpha 决定，跟里面按钮各算各的，互不影响。
+///
+/// `floating` 让整块"浮"起来：模糊内容放在内层裁剪，圆角阴影画在外层，
+/// 这样有阴影也不会被 `masksToBounds` 切掉。
+final class GlassView: NSView {
+    /// 亮玻璃（浅色底盘）／暗玻璃（近黑悬浮底）／清水玻璃（几乎没有底色，只留一层薄雾和反光）
+    enum Chrome { case light, dark, clear }
+
+    private let clip = NSView()
+    private let blur = NSVisualEffectView()
+    private let tintView = NSView()
+    private let glowView = NSView()
+    private let tintLayer = CAGradientLayer()
+    private let glowLayer = CAGradientLayer()
+    let radius: CGFloat
+    private let chrome: Chrome
+    private var tintAlpha: CGFloat = 0
+    private var tintColor: NSColor = .white
+
+    init(radius: CGFloat, tint: CGFloat,
+         material: NSVisualEffectView.Material = .popover,
+         chrome: Chrome = .light,
+         floating: Bool = false) {
+        self.radius = radius
+        self.chrome = chrome
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+        layer?.masksToBounds = false
+
+        if floating {
+            layer?.shadowColor = NSColor.black.cgColor
+            layer?.shadowOpacity = 0.16
+            layer?.shadowRadius = 18
+            layer?.shadowOffset = CGSize(width: 0, height: -6)
+        }
+
+        clip.wantsLayer = true
+        clip.layer?.cornerRadius = radius
+        clip.layer?.masksToBounds = true
+        clip.layer?.borderWidth = 1
+        clip.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(clip)
+
+        switch chrome {
+        case .dark:
+            appearance = NSAppearance(named: .darkAqua)
+            tintColor = .black
+            clip.layer?.borderColor = NSColor.white.withAlphaComponent(0.13).cgColor
+        case .light:
+            clip.layer?.borderColor = NSColor.white.withAlphaComponent(0.52).cgColor
+        case .clear:
+            tintColor = .white
+            clip.layer?.borderColor = NSColor.white.withAlphaComponent(0.34).cgColor
+        }
+
+        blur.material = material
+        blur.blendingMode = .withinWindow
+        blur.state = .active
+        if chrome == .dark { blur.appearance = NSAppearance(named: .darkAqua) }
+        blur.translatesAutoresizingMaskIntoConstraints = false
+        clip.addSubview(blur)
+
+        tintLayer.startPoint = CGPoint(x: 0.5, y: 1)
+        tintLayer.endPoint = CGPoint(x: 0.5, y: 0)
+        tintView.wantsLayer = true
+        tintView.layer?.addSublayer(tintLayer)
+        tintView.translatesAutoresizingMaskIntoConstraints = false
+        clip.addSubview(tintView)
+
+        glowLayer.startPoint = CGPoint(x: 0.5, y: 1)
+        glowLayer.endPoint = CGPoint(x: 0.5, y: 0)
+        let glowA: CGFloat
+        switch chrome {
+        case .dark: glowA = 0.10
+        case .light: glowA = 0.34
+        case .clear: glowA = 0.30
+        }
+        glowLayer.colors = [NSColor.white.withAlphaComponent(glowA).cgColor,
+                            NSColor.white.withAlphaComponent(0).cgColor]
+        glowView.wantsLayer = true
+        glowView.layer?.addSublayer(glowLayer)
+        glowView.translatesAutoresizingMaskIntoConstraints = false
+        clip.addSubview(glowView)
+
+        NSLayoutConstraint.activate([
+            clip.leadingAnchor.constraint(equalTo: leadingAnchor),
+            clip.trailingAnchor.constraint(equalTo: trailingAnchor),
+            clip.topAnchor.constraint(equalTo: topAnchor),
+            clip.bottomAnchor.constraint(equalTo: bottomAnchor),
+
+            blur.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            blur.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            blur.topAnchor.constraint(equalTo: clip.topAnchor),
+            blur.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
+            tintView.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            tintView.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            tintView.topAnchor.constraint(equalTo: clip.topAnchor),
+            tintView.bottomAnchor.constraint(equalTo: clip.bottomAnchor),
+            glowView.leadingAnchor.constraint(equalTo: clip.leadingAnchor),
+            glowView.trailingAnchor.constraint(equalTo: clip.trailingAnchor),
+            glowView.topAnchor.constraint(equalTo: clip.topAnchor),
+            glowView.heightAnchor.constraint(equalToConstant: 13),
+        ])
+
+        setTint(tint)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// 0 = 全透（只留模糊），1 = 一片实色
+    func setTint(_ a: CGFloat) {
+        tintAlpha = a
+        rebuildTint()
+    }
+
+    /// 开着的开关用主题色染一下玻璃，跟"没开"的一眼区分
+    func setColor(_ c: NSColor) {
+        tintColor = c
+        rebuildTint()
+    }
+
+    private func rebuildTint() {
+        // 清水玻璃的渐变要更平，不然中间会出现一道可见的分界
+        let spread: CGFloat = chrome == .clear ? 0.07 : 0.13
+        let top = min(1, tintAlpha + spread)
+        let bottom = max(0, tintAlpha - spread * 0.7)
+        tintLayer.colors = [tintColor.withAlphaComponent(bottom).cgColor,
+                            tintColor.withAlphaComponent(top).cgColor]
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        tintLayer.frame = tintView.bounds
+        glowLayer.frame = glowView.bounds
+        if layer?.shadowOpacity ?? 0 > 0 {
+            layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: radius,
+                                       cornerHeight: radius, transform: nil)
+        }
+        CATransaction.commit()
+    }
+}
