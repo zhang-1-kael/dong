@@ -1,0 +1,20 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: 编译验证
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 编译（不内置壁纸，加快 CI）
+        run: VW_NO_PRESETS=1 ./build.sh
+
+      - name: 校验产物
+        run: test -x build/VideoWallpaper.app/Contents/MacOS/VideoWallpaper

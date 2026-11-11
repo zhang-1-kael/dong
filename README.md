@@ -1,40 +1,83 @@
-# Dòng
+<div align="center">
+  <img width="225" height="225" src="assets/brandmark.png" alt="Dòng">
+  <h1><b>Dòng</b></h1>
+  <p>把任何视频，变成会动的桌面。<br>
+  <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
+  <a href="#installation">下载 for macOS</a><br>
+  <i>~ 版本 3.18 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
+</div>
 
-**一个纯原生 Swift 写的 macOS 动态壁纸 App。**
-约 6 100 行代码，零第三方框架 —— 没有 Electron、没有 SwiftUI、没有一颗 Pod。
+> [!NOTE]
+>
+> Dòng 是一个完全用 Swift 和 AppKit 写的 macOS 动态壁纸工具 —— 约 6,200 行代码，零第三方框架，
+> 没有 Electron、没有 SwiftUI、没有一颗 Pod。
+> 贴一条视频链接，或拖进一个本地视频，它会自动下载、裁剪、拼接成无缝循环，铺在你的桌面上。
 
-给它一个视频文件，或者一条网页链接，它会把片头片尾裁掉、去掉画面角标、
-把首尾接成无缝循环，然后挂到桌面上循环播放。
+<h6 align="center">
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.18-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.18"></a>
+  <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&labelColor=23272A&logo=apple&logoColor=white" alt="macOS 13+"></a>
+  <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
+  <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
+  <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
+</h6>
 
-<p align="center">
-  <img src="docs/screenshot.png" width="620" alt="Dòng 菜单栏面板">
-</p>
+## Features
 
-<p align="center">
-  <code>macOS 13+</code> · <code>Apple Silicon</code> · <code>MIT</code> · <code>100% local</code>
-</p>
+### 🖥 桌面级动态壁纸
 
----
+在 WindowServer 的桌面层上挂一扇无边框窗口，用 `AVPlayerLayer` 循环播放。
+不改系统壁纸、不装内核扩展、不需要管理员权限。每块屏幕独立窗口、独立播放器，插拔显示器自动重建。
 
-## 它做了什么
+### 🔗 链接即壁纸
 
-| | |
-|---|---|
-| **真·动态桌面** | 在 WindowServer 的桌面层上挂一扇无边框窗口，用 `AVPlayerLayer` 播放。不改系统壁纸、不装内核扩展、不需要管理员权限 |
-| **锁屏同款画面** | 抽一帧视频设为系统壁纸 —— 解锁时是动的，锁屏时是同一张静帧 |
-| **一条链接直接入库** | 贴 B 站 / YouTube 链接，下载 → 转码 → 调优 → 入库全自动 |
-| **自动剪片头片尾** | 用 ffmpeg 把画面「运动量」算成一维信号，在信号上找突变，判断哪里是正片 |
-| **自动去角标** | 按白度、长宽比、边缘密度定位画面角落的平台水印，用 `delogo` 插值填补 |
-| **无缝循环** | 片尾与片头做 0.4 秒交叉淡化，循环点彻底消失 |
-| **多屏** | 每块屏幕独立窗口、独立播放器，插拔显示器自动重建 |
+贴一条 B 站 / YouTube 链接，下载 → 转码 → 调优 → 入库全自动。
+抖音链接受平台反爬限制（详见[已知限制](#已知限制)），请先把视频保存到本地再拖进来。
+
+### ✂️ 自动剪成无缝循环
+
+用 ffmpeg 把画面「运动量」算成一维信号，在信号上找突变，判断哪里是正片；
+按白度、长宽比、边缘密度定位平台水印，用 `delogo` 插值填补；
+片尾与片头做 0.4 秒交叉淡化，循环点彻底消失。
 
 <p align="center">
   <img src="docs/pipeline.svg" width="700" alt="导入流水线">
 </p>
 
+### 🎛 菜单栏玻璃面板
+
+一个常驻菜单栏的 App：当前壁纸、磁盘占用、在线时长，粘贴链接即导入，全部控件 AppKit 自绘。
+
+<p align="center">
+  <img src="assets/panel.jpg" width="620" alt="Dòng 菜单栏面板">
+</p>
+
+### 📚 瀑布流壁纸库
+
+按封面网格铺开全部壁纸，悬停即预览，点击切换。音量、播放控制、当前帧信息一屏搞定。
+
+<p align="center">
+  <img src="assets/library.jpg" width="620" alt="Dòng 壁纸库">
+</p>
+
+### 🔒 锁屏同款画面
+
+抽一帧视频设为系统壁纸 —— 解锁时是动的，锁屏时是同一张静帧。
+
 ---
 
-## 构建
+## Usage
+
+### Installation
+
+#### 下载 Dòng
+
+前往 [Releases](https://github.com/zhang-1-kael/dong/releases) 页面下载最新的 `.dmg`，打开后把 Dòng 拖进「应用程序」即可。
+
+> [!TIP]
+> 首个正式版本正在打包中。在它发布之前，你可以按下方步骤从源码构建一份 —— 只需要 Xcode 命令行工具，一分钟装好。
+
+#### 从源码构建
 
 **依赖只有 Xcode 命令行工具**，不需要 Xcode 本体：
 
@@ -54,7 +97,7 @@ open build/VideoWallpaper.app
 `build.sh` 用一行 `swiftc` 把 8 个 `.swift` 文件编成一个可执行文件，再组装成 `.app`。
 编译产物是 **ad-hoc 签名**，只能在你自己机器上跑；要分发给别人得走 `sign-notarize.sh`。
 
-### 可选组件
+##### 可选组件
 
 下面两个都不是编译必需的，缺了只影响对应功能：
 
@@ -65,14 +108,21 @@ open build/VideoWallpaper.app
 
 `build.sh` 会自动把找到的 ffmpeg / yt-dlp 塞进 App 包里，这样拷给别人也能用。
 
-> ⚠️ 本仓库**不包含**这两个二进制，也不包含内置壁纸素材 —— 见下方 [许可与素材](#许可与素材)。
+> ⚠️ 本仓库**不包含**这两个二进制，也不包含内置壁纸素材 —— 见下方[许可与素材](#许可与素材)。
 
-### 打包成 DMG
+##### 打包成 DMG
 
 ```bash
 ./package.sh                    # → dist/Dòng-<版本>.dmg
 VW_NO_PRESETS=1 ./package.sh    # 不带内置壁纸，DMG 小 360 MB
 ```
+
+### 导入一条壁纸
+
+1. 点菜单栏里的 Dòng 图标，打开面板；
+2. 把 B 站 / YouTube 链接粘进输入框（一整段分享文案也没关系，程序会自己把链接挑出来），回车；
+3. 或者直接把本地视频文件拖进壁纸库窗口；
+4. 等底部胶囊跑完 —— 通常 20~60 秒，壁纸就换上去了。
 
 ---
 
@@ -144,8 +194,8 @@ CPU 架构、语言、事件名。
 **不记录**：文件名、目录路径、链接内容、壁纸画面、任何可识别个人的信息。
 设置里可以一键关闭，关掉后立即清空本地队列并停止所有请求。
 
-统计数据发往作者自己的服务器（`Analytics.swift` 里硬编码的地址）。
-**如果你 fork 了并自己发行，请把 `Analytics.swift` 第 47 行 `isEnabled` 的默认值改成 `false`**，
+统计数据发往作者自己的服务器（`Analytics.swift` 里硬编码的地址），且**默认开启**。
+**如果你 fork 了并自己发行，请把 `Analytics.swift` 第 50 行 `isEnabled` 的默认值改成 `false`**，
 否则你的用户会往作者的服务器上报 —— 这一步不体面，但必须说清楚。
 
 ---

@@ -1,0 +1,39 @@
+name: Feature Request
+description: 提一个新功能想法。
+title: "💡 [标题]"
+labels: ["Enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        有想法就提。描述清楚「要解决什么问题」，比描述「想要什么按钮」更重要。
+
+  - type: textarea
+    attributes:
+      label: 想解决什么问题
+      description: 你遇到的痛点，或者现有流程里别扭的地方。
+      placeholder: 每次……的时候，我都不得不……，很麻烦。
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 期望的方案
+      description: 你希望 Dòng 怎么做？
+      placeholder: 如果能……就好了。
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: 考虑过的替代方案
+      description: 有没有别的绕法？为什么不够好？
+    validations:
+      required: false
+
+  - type: textarea
+    attributes:
+      label: 补充信息
+      description: 其他 App 是怎么做的、截图、链接，都可以贴在这里。
+    validations:
+      required: false
