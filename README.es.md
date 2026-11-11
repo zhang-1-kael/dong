@@ -46,10 +46,6 @@ ffmpeg convierte el movimiento en pantalla en una señal 1-D; los saltos de esa 
 Las marcas de agua de las plataformas se localizan por blancura, relación de aspecto y densidad de bordes, y se tapan con interpolación `delogo`.
 Un fundido cruzado de 0,4 segundos entre el final y el principio borra por completo el punto de unión.
 
-<p align="center">
-  <img src="docs/pipeline.svg" width="700" alt="Proceso de importación">
-</p>
-
 ### 🎛 Panel de cristal en la barra de menús
 
 Una app residente en la barra de menús: fondo actual, espacio en disco, tiempo en línea, un campo para pegar enlaces — cada control dibujado a mano en AppKit.

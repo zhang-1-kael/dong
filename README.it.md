@@ -46,10 +46,6 @@ ffmpeg trasforma il movimento sullo schermo in un segnale 1-D; i salti del segna
 Le filigrane delle piattaforme vengono individuate per luminosità, rapporto d'aspetto e densità di bordi, poi coperte con interpolazione `delogo`.
 Una dissolvenza incrociata di 0,4 secondi tra fine e inizio cancella del tutto il punto di loop.
 
-<p align="center">
-  <img src="docs/pipeline.svg" width="700" alt="Pipeline di importazione">
-</p>
-
 ### 🎛 Pannello in vetro nella barra dei menu
 
 Un'app residente nella barra dei menu: sfondo attuale, spazio su disco, tempo online, un campo per incollare il link — ogni controllo disegnato a mano in AppKit.

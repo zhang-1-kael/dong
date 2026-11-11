@@ -46,10 +46,6 @@ ffmpeg convertit le mouvement à l'écran en un signal 1-D ; les sauts de ce sig
 Les filigranes des plateformes sont repérés par leur blancheur, leur rapport d'aspect et leur densité de contours, puis masqués par interpolation `delogo`.
 Un fondu croisé de 0,4 seconde entre la fin et le début efface complètement le point de boucle.
 
-<p align="center">
-  <img src="docs/pipeline.svg" width="700" alt="Chaîne d'import">
-</p>
-
 ### 🎛 Panneau vitré dans la barre de menus
 
 Une app résidente dans la barre de menus : fond d'écran actuel, espace disque, temps de connexion, un champ pour coller un lien — chaque contrôle dessiné à la main en AppKit.

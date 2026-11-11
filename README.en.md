@@ -44,10 +44,6 @@ ffmpeg turns on-screen motion into a 1-D signal; jumps in that signal reveal whe
 Platform watermarks are located by whiteness, aspect ratio, and edge density, then patched with `delogo` interpolation.
 A 0.4-second crossfade between ending and opening erases the loop point completely.
 
-<p align="center">
-  <img src="docs/pipeline.svg" width="700" alt="Import pipeline">
-</p>
-
 ### 🎛 Menu bar glass panel
 
 A resident menu bar app: current wallpaper, disk usage, online time, paste a link to import — every control hand-drawn in AppKit.

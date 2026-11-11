@@ -46,10 +46,6 @@ ffmpeg rechnet die Bewegtheit des Bildes in ein 1-D-Signal; Sprünge im Signal v
 Plattform-Wasserzeichen werden über Helligkeit, Seitenverhältnis und Kantendichte geortet und mit `delogo`-Interpolation ausgebessert.
 Eine 0,4-Sekunden-Crossfade zwischen Ende und Anfang lässt den Schleifenpunkt vollständig verschwinden.
 
-<p align="center">
-  <img src="docs/pipeline.svg" width="700" alt="Import-Pipeline">
-</p>
-
 ### 🎛 Glas-Panel in der Menüleiste
 
 Eine ständige Menüleisten-App: aktuelles Wallpaper, Plattenbelegung, Online-Zeit; Link einfügen genügt zum Import — alle Controls in AppKit von Hand gezeichnet.
