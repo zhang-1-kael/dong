@@ -762,23 +762,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             p.waitUntilExit()
         }
         libraryWC?.reload()
-        Analytics.shared.track("toggle_autostart", ["on": on])
+        Analytics.shared.track("autostart_toggle", ["on": on])
     }
 
     /// 让用户贴一条链接（剪贴板里已经有链接就直接填好）
     @objc func promptLink() {
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 420, height: 24))
-        field.placeholderString = "https://…（B 站、YouTube、抖音都行）"
+        field.placeholderString = "https://…（B 站、YouTube 等）"
         field.font = .systemFont(ofSize: 12.5)
         if let clip = NSPasteboard.general.string(forType: .string),
            Downloader.looksLikeLink(clip) {
-            field.stringValue = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 剪贴板里可能是「标题 + 链接」一整段，只填链接本身
+            field.stringValue = Downloader.extractLink(clip)
         }
 
         let alert = NSAlert()
         alert.messageText = "粘贴视频链接"
         alert.informativeText = "下载后会自动去跳帧、按屏幕比例裁切、做成无缝循环，"
-            + "完成后直接设成壁纸。"
+            + "完成后存进壁纸库，由你自己挑什么时候换上。"
         alert.accessoryView = field
         alert.addButton(withTitle: "开始处理")
         alert.addButton(withTitle: "取消")

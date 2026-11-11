@@ -1018,13 +1018,10 @@ final class LinkField: NSView, NSTextFieldDelegate {
         needDisplayPlaceholderReset()
     }
 
-    /// 平台复制出来的多是「标题 + 链接」，只留里面那条链接
+    /// 平台复制出来的多是「标题 + 链接」，只留里面那条链接。
+    /// 实现统一放在 Downloader 里，别处（面板、菜单）共用一份，避免两套判定分叉。
     static func extractLink(_ raw: String) -> String {
-        let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let r = t.range(of: "https?://[^\\s\u{3000}]+", options: .regularExpression) {
-            return String(t[r])
-        }
-        return t
+        Downloader.extractLink(raw)
     }
 
     private func needDisplayPlaceholderReset() {
