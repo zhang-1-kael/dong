@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>Trasforma qualsiasi video in una scrivania viva.<br>
   <a href="#features"><strong>Scopri Dòng »</strong></a><br><br>
-  <a href="#installation">Scarica per macOS</a><br>
+  <a href="#installation">Scarica per macOS</a> · <a href="https://dongisgood.coze.site/en">Sito ufficiale ↗</a><br>
   <i>~ Versione 3.31 · macOS 13 e successivi · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>

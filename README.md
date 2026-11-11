@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>Turn any video into a living desktop.<br>
   <a href="#features"><strong>Explore Dòng »</strong></a><br><br>
-  <a href="#installation">Download for macOS</a><br>
+  <a href="#installation">Download for macOS</a> · <a href="https://dongisgood.coze.site/en">Official website ↗</a><br>
   <i>~ Version 3.31 · macOS 13 and later · Apple Silicon ~</i></p>
   <p>
     <b>English</b> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>

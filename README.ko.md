@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>어떤 영상이든 살아 움직이는 데스크톱으로.<br>
   <a href="#features"><strong>Dòng 살펴보기 »</strong></a><br><br>
-  <a href="#installation">macOS용 다운로드</a><br>
+  <a href="#installation">macOS용 다운로드</a> · <a href="https://dongisgood.coze.site/en">공식 웹사이트 ↗</a><br>
   <i>~ 버전 3.31 · macOS 13 이상 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b> · <a href="README.fr.md">Français</a><br>

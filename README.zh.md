@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>把任何视频，变成会动的桌面。<br>
   <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
-  <a href="#installation">下载 for macOS</a><br>
+  <a href="#installation">下载 for macOS</a> · <a href="https://dongisgood.coze.site/en">访问官网 ↗</a><br>
   <i>~ 版本 3.31 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <b>简体中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
