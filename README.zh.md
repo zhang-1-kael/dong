@@ -61,7 +61,7 @@
 按封面网格铺开全部壁纸，悬停即预览，点击切换。音量、播放控制、当前帧信息一屏搞定。
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Dòng 壁纸库">
+  <img src="assets/library-wide.jpg" width="720" alt="Dòng 壁纸库">
 </p>
 
 ### 🔒 锁屏同款画面

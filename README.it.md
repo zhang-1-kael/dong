@@ -63,7 +63,7 @@ Un'app residente nella barra dei menu: sfondo attuale, spazio su disco, tempo on
 Tutti gli sfondi in una griglia di copertine; passa il mouse per l'anteprima, clicca per cambiare. Volume, controlli di riproduzione, info sul frame corrente — tutto in un'unica schermata.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Libreria di sfondi di Dòng">
+  <img src="assets/library-wide.jpg" width="720" alt="Libreria di sfondi di Dòng">
 </p>
 
 ### 🔒 Lo stesso frame sulla schermata di blocco

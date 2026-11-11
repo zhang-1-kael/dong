@@ -63,7 +63,7 @@ Eine ständige Menüleisten-App: aktuelles Wallpaper, Plattenbelegung, Online-Ze
 Alle Wallpaper im Cover-Raster; hovern zum Vorab-Ansehen, Klicken zum Wechseln. Lautstärke, Wiedergabesteuerung, aktuelle Frame-Infos — alles auf einem Screen.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Dòng-Wallpaper-Bibliothek">
+  <img src="assets/library-wide.jpg" width="720" alt="Dòng-Wallpaper-Bibliothek">
 </p>
 
 ### 🔒 Gleicher Frame auf dem Sperrbildschirm

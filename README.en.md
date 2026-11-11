@@ -61,7 +61,7 @@ A resident menu bar app: current wallpaper, disk usage, online time, paste a lin
 All wallpapers in a cover grid; hover to preview, click to switch. Volume, playback controls, current frame info — all in one screen.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Dòng wallpaper library">
+  <img src="assets/library-wide.jpg" width="720" alt="Dòng wallpaper library">
 </p>
 
 ### 🔒 Same frame on Lock Screen

@@ -63,7 +63,7 @@ Una app residente en la barra de menús: fondo actual, espacio en disco, tiempo 
 Todos los fondos en una cuadrícula de portadas; pasa el cursor para previsualizar, haz clic para cambiar. Volumen, controles de reproducción, información del fotograma actual — todo en una sola pantalla.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Biblioteca de fondos de Dòng">
+  <img src="assets/library-wide.jpg" width="720" alt="Biblioteca de fondos de Dòng">
 </p>
 
 ### 🔒 El mismo fotograma en la pantalla de bloqueo

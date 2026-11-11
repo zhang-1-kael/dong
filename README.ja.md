@@ -63,7 +63,7 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 すべての壁紙をカバーグリッドで展開。ホバーでプレビュー、クリックで切り替え。音量、再生コントロール、現在のフレーム情報を一画面で。
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Dòng 壁紙ライブラリ">
+  <img src="assets/library-wide.jpg" width="720" alt="Dòng 壁紙ライブラリ">
 </p>
 
 ### 🔗 ロック画面と同じ絵柄

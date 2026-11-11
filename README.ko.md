@@ -63,7 +63,7 @@ ffmpeg가 화면의 움직임을 1차원 신호로 바꾸고, 신호가 튀는 �
 모든 배경화면을 표지 격자로 보여 줍니다. 마우스를 올리면 미리보기, 클릭하면 전환. 볼륨, 재생 조작, 현재 프레임 정보까지 한 화면에 담았습니다.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Dòng 배경화면 라이브러리">
+  <img src="assets/library-wide.jpg" width="720" alt="Dòng 배경화면 라이브러리">
 </p>
 
 ### 🔒 잠금 화면에도 같은 장면

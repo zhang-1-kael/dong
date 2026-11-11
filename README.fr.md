@@ -63,7 +63,7 @@ Une app résidente dans la barre de menus : fond d'écran actuel, espace disque,
 Tous les fonds d'écran dans une grille de couvertures ; survolez pour prévisualiser, cliquez pour changer. Volume, contrôles de lecture, infos sur l'image courante — tout sur un seul écran.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Bibliothèque de fonds d'écran de Dòng">
+  <img src="assets/library-wide.jpg" width="720" alt="Bibliothèque de fonds d'écran de Dòng">
 </p>
 
 ### 🔒 La même image sur l'écran de verrouillage
