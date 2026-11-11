@@ -5,6 +5,13 @@
   <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
   <a href="#installation">下载 for macOS</a><br>
   <i>~ 版本 3.31 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
+  <p>
+    <b>中文</b> ·
+    <a href="README.en.md">English</a> ·
+    <a href="README.ja.md">日本語</a> ·
+    <a href="README.de.md">Deutsch</a> ·
+    <a href="README.ru.md">Русский</a>
+  </p>
 </div>
 
 > [!NOTE]
