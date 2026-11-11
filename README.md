@@ -217,6 +217,24 @@ CPU 架构、语言、事件名。
 
 ---
 
+## About
+
+I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
+why a wallpaper couldn't be a moving video, so I wrote one in Swift from
+scratch, just for myself.
+
+Then my classmates saw it and wanted it too. So I thought, why not build it
+properly and share it. Getting from "it runs on my machine" to "it runs on
+yours" meant figuring out downloads, transcoding, code signing, auto-updates —
+none of which I had needed to care about before. It was a lot of reading docs
+and hitting walls, one small fix at a time.
+
+Now it's open source, and I'm sharing it with everyone. I hope you enjoy using
+it — and if you run into any problems or have ideas, please open an issue.
+I read every one.
+
+---
+
 <p align="center">
   <sub>Built with swiftc. No frameworks were harmed.</sub>
 </p>
