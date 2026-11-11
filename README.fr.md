@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="225" height="225" src="assets/brandmark.png" alt="Dòng">
+  <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>Transformez n'importe quelle vidéo en bureau vivant.<br>
   <a href="#features"><strong>Découvrir Dòng »</strong></a><br><br>

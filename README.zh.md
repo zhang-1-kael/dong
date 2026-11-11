@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="225" height="225" src="assets/brandmark.png" alt="Dòng">
+  <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>把任何视频，变成会动的桌面。<br>
   <a href="#features"><strong>探索 Dòng »</strong></a><br><br>

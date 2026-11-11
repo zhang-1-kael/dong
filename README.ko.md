@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="225" height="225" src="assets/brandmark.png" alt="Dòng">
+  <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>어떤 영상이든 살아 움직이는 데스크톱으로.<br>
   <a href="#features"><strong>Dòng 살펴보기 »</strong></a><br><br>
