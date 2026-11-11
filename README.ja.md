@@ -6,11 +6,8 @@
   <a href="#installation">macOS 版をダウンロード</a><br>
   <i>~ バージョン 3.31 · macOS 13 以降 · Apple Silicon ~</i></p>
   <p>
-    <a href="README.md">中文</a> ·
-    <a href="README.en.md">English</a> ·
-    <b>日本語</b> ·
-    <a href="README.de.md">Deutsch</a> ·
-    <a href="README.ru.md">Русский</a>
+    <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
+    <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
 </div>
 
@@ -29,6 +26,8 @@
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
 
+<a id="features" name="features"></a>
+
 ## 機能
 
 ### 🖥 デスクトップ級ライブ壁紙
@@ -39,12 +38,12 @@ WindowServer のデスクトップ層に枠なしウィンドウを置き、`AVP
 ### 🔗 リンク即壁紙
 
 Bilibili / YouTube のリンクを貼るだけで、ダウンロード → トランスコード → 調整 → ライブラリ登録まで全自動。
-抖音のリンクはプラットフォームのスクレイピング対策で取得できません（[既知の制限](#既知の制限) を参照）。まず動画をローカルに保存してからドラッグしてください。
+Douyin のリンクはプラットフォームのスクレイピング対策で取得できません（[既知の制限](#既知の制限) を参照）。まず動画をローカルに保存してからドラッグしてください。
 
 ### ✂️ 自動でシームレスループに
 
 ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変位から本編の位置を特定。
-白度・アスペクト比・エッジ密度からプラットフォームの透かしを定位し、`delogo` 補間で修復。
+明るさ・アスペクト比・エッジ密度からプラットフォームの透かしを特定し、`delogo` 補間で修復。
 末尾と冒頭を 0.4 秒のクロスフェードでつなぎ、ループ点を完全に消し去ります。
 
 <p align="center">
@@ -74,6 +73,8 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 ---
 
 ## 使い方
+
+<a id="installation" name="installation"></a>
 
 ### インストール
 
@@ -127,7 +128,7 @@ VW_NO_PRESETS=1 ./package.sh    # 内蔵壁紙なし。DMG が 360 MB 小さく�
 ### 壁紙をインポートする
 
 1. メニューバーの Dòng アイコンをクリックしてパネルを開く；
-2. Bilibili / YouTube のリンクを入力欄に貼り付ける（シェア文案全体でも大丈夫、プログラムが自分でリンクを抽出します）、Enter；
+2. Bilibili / YouTube のリンクを入力欄に貼り付ける（共有テキストをそのまま貼っても大丈夫、アプリが自分でリンクを抽出します）、Enter；
 3. またはローカルの動画ファイルを壁紙ライブラリウィンドウに直接ドラッグ；
 4. 下部のカプセルが完了するのを待つ — 通常 20〜60 秒で壁紙が切り替わります。
 
@@ -190,7 +191,7 @@ VideoWallpaper --link "https://…"         # リンクのダウンロード + �
 | ロック画面は静止 | macOS はサードパーティにロック画面の動画を公開していません。フレーム切り出しは一線を越えない唯一の方法です |
 | マルチディスプレイは同一動画を共有 | 画面ごとにプレイヤーは一つですが、ソースは同一ファイル |
 | 更新は全自動 | 確認 → ダウンロード → SHA256 検証 → 終了後にその場で置き換えて再起動。インストールできない場合だけ dmg を開く方式にフォールバック |
-| 抖音のリンクは非対応 | 抖音は `a_bogus` スクレイピング対策を採用しており、ログイン状態の cookie が必要。匿名リクエストは即拒否されます。まず App 内でローカルに保存してから、ファイルをドラッグしてください |
+| Douyin のリンクは非対応 | Douyin は `a_bogus` スクレイピング対策を採用しており、ログイン状態の cookie が必要。匿名リクエストは即拒否されます。まず App 内でローカルに保存してから、ファイルをドラッグしてください |
 | リンクダウンロードには法の限界が | サードパーティのプラットフォームからコンテンツを取得する際は、権利を持つ素材のみを使ってください |
 
 ---

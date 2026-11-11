@@ -6,11 +6,8 @@
   <a href="#installation">Скачать для macOS</a><br>
   <i>~ Версия 3.31 · macOS 13 и выше · Apple Silicon ~</i></p>
   <p>
-    <a href="README.md">中文</a> ·
-    <a href="README.en.md">English</a> ·
-    <a href="README.ja.md">日本語</a> ·
-    <a href="README.de.md">Deutsch</a> ·
-    <b>Русский</b>
+    <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
+    <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <b>Русский</b>
   </p>
 </div>
 
@@ -28,6 +25,8 @@
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
+
+<a id="features" name="features"></a>
 
 ## Возможности
 
@@ -74,6 +73,8 @@ ffmpeg превращает «движение» в кадре в одномер
 ---
 
 ## Использование
+
+<a id="installation" name="installation"></a>
 
 ### Установка
 

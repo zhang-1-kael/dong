@@ -6,11 +6,8 @@
   <a href="#installation">Download for macOS</a><br>
   <i>~ Version 3.31 · macOS 13 and later · Apple Silicon ~</i></p>
   <p>
-    <a href="README.md">中文</a> ·
-    <b>English</b> ·
-    <a href="README.ja.md">日本語</a> ·
-    <a href="README.de.md">Deutsch</a> ·
-    <a href="README.ru.md">Русский</a>
+    <b>English</b> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
+    <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
 </div>
 

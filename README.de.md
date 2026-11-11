@@ -6,11 +6,8 @@
   <a href="#installation">Download für macOS</a><br>
   <i>~ Version 3.31 · macOS 13 und neuer · Apple Silicon ~</i></p>
   <p>
-    <a href="README.md">中文</a> ·
-    <a href="README.en.md">English</a> ·
-    <a href="README.ja.md">日本語</a> ·
-    <b>Deutsch</b> ·
-    <a href="README.ru.md">Русский</a>
+    <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
+    <b>Deutsch</b> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
 </div>
 
@@ -28,6 +25,8 @@
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
+
+<a id="features" name="features"></a>
 
 ## Funktionen
 
@@ -74,6 +73,8 @@ Einen Frame greifen und als System-Wallpaper setzen — bewegt beim Entsperren, 
 ---
 
 ## Verwendung
+
+<a id="installation" name="installation"></a>
 
 ### Installation
 

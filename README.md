@@ -1,29 +1,26 @@
 <div align="center">
   <img width="225" height="225" src="assets/brandmark.png" alt="Dòng">
   <h1><b>Dòng</b></h1>
-  <p>把任何视频，变成会动的桌面。<br>
-  <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
-  <a href="#installation">下载 for macOS</a><br>
-  <i>~ 版本 3.31 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
+  <p>Turn any video into a living desktop.<br>
+  <a href="#features"><strong>Explore Dòng »</strong></a><br><br>
+  <a href="#installation">Download for macOS</a><br>
+  <i>~ Version 3.31 · macOS 13 and later · Apple Silicon ~</i></p>
   <p>
-    <b>中文</b> ·
-    <a href="README.en.md">English</a> ·
-    <a href="README.ja.md">日本語</a> ·
-    <a href="README.de.md">Deutsch</a> ·
-    <a href="README.ru.md">Русский</a>
+    <b>English</b> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
+    <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
 </div>
 
 > [!NOTE]
 >
-> Dòng 是一个完全用 Swift 和 AppKit 写的 macOS 动态壁纸工具 —— 约 8,500 行代码，零第三方框架，
-> 没有 Electron、没有 SwiftUI、没有一颗 Pod。
-> 贴一条视频链接，或拖进一个本地视频，它会自动下载、裁剪、拼接成无缝循环，铺在你的桌面上。
+> Dòng is a macOS live wallpaper tool written entirely in Swift and AppKit — about 8,500 lines of code, zero third-party frameworks.
+> No Electron, no SwiftUI, not a single Pod.
+> Paste a video link, or drag in a local video: it downloads, trims, and stitches it into a seamless loop, spread across your desktop.
 
 <h6 align="center">
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
-  <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&labelColor=23272A&logo=apple&logoColor=white" alt="macOS 13+"></a>
+  <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
@@ -31,45 +28,45 @@
 
 ## Features
 
-### 🖥 桌面级动态壁纸
+### 🖥 Desktop-grade live wallpaper
 
-在 WindowServer 的桌面层上挂一扇无边框窗口，用 `AVPlayerLayer` 循环播放。
-不改系统壁纸、不装内核扩展、不需要管理员权限。每块屏幕独立窗口、独立播放器，插拔显示器自动重建。
+Hang a borderless window on WindowServer's desktop layer and loop it with `AVPlayerLayer`.
+It doesn't touch the system wallpaper, needs no kernel extension, and requires no admin rights. Every display gets its own window and player; plug in or unplug a monitor and the windows rebuild automatically.
 
-### 🔗 链接即壁纸
+### 🔗 Link → wallpaper
 
-贴一条 B 站 / YouTube 链接，下载 → 转码 → 调优 → 入库全自动。
-抖音链接受平台反爬限制（详见[已知限制](#已知限制)），请先把视频保存到本地再拖进来。
+Paste a Bilibili / YouTube link and the whole chain — download, transcode, fine-tune, import — runs automatically.
+Douyin links are blocked by the platform's anti-scraping (see [Known Limitations](#known-limitations)); save the video locally first, then drag it in.
 
-### ✂️ 自动剪成无缝循环
+### ✂️ Auto-trimmed into a seamless loop
 
-用 ffmpeg 把画面「运动量」算成一维信号，在信号上找突变，判断哪里是正片；
-按白度、长宽比、边缘密度定位平台水印，用 `delogo` 插值填补；
-片尾与片头做 0.4 秒交叉淡化，循环点彻底消失。
-
-<p align="center">
-  <img src="docs/pipeline.svg" width="700" alt="导入流水线">
-</p>
-
-### 🎛 菜单栏玻璃面板
-
-一个常驻菜单栏的 App：当前壁纸、磁盘占用、在线时长，粘贴链接即导入，全部控件 AppKit 自绘。
+ffmpeg turns on-screen motion into a 1-D signal; jumps in that signal reveal where the real content starts.
+Platform watermarks are located by whiteness, aspect ratio, and edge density, then patched with `delogo` interpolation.
+A 0.4-second crossfade between ending and opening erases the loop point completely.
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Dòng 菜单栏面板">
+  <img src="docs/pipeline.svg" width="700" alt="Import pipeline">
 </p>
 
-### 📚 瀑布流壁纸库
+### 🎛 Menu bar glass panel
 
-按封面网格铺开全部壁纸，悬停即预览，点击切换。音量、播放控制、当前帧信息一屏搞定。
+A resident menu bar app: current wallpaper, disk usage, online time, paste a link to import — every control hand-drawn in AppKit.
 
 <p align="center">
-  <img src="assets/library.jpg" width="620" alt="Dòng 壁纸库">
+  <img src="assets/panel.jpg" width="620" alt="Dòng menu bar panel">
 </p>
 
-### 🔒 锁屏同款画面
+### 📚 Waterfall wallpaper library
 
-抽一帧视频设为系统壁纸 —— 解锁时是动的，锁屏时是同一张静帧。
+All wallpapers in a cover grid; hover to preview, click to switch. Volume, playback controls, current frame info — all in one screen.
+
+<p align="center">
+  <img src="assets/library.jpg" width="620" alt="Dòng wallpaper library">
+</p>
+
+### 🔒 Same frame on Lock Screen
+
+Grab a frame and set it as the system wallpaper — moving when unlocked, the same still frame when locked.
 
 ---
 
@@ -77,22 +74,22 @@
 
 ### Installation
 
-#### 下载 Dòng
+#### Download Dòng
 
-前往 [Releases](https://github.com/zhang-1-kael/dong/releases) 页面下载最新的 `.dmg`，打开后把 Dòng 拖进「应用程序」即可。
+Grab the latest `.dmg` from the [Releases](https://github.com/zhang-1-kael/dong/releases) page, open it, and drag Dòng into "Applications".
 
 > [!TIP]
-> 首个正式版本正在打包中。在它发布之前，你可以按下方步骤从源码构建一份 —— 只需要 Xcode 命令行工具，一分钟装好。
+> The first official release is being packaged. Until it ships, you can build your own from source with the steps below — all you need is the Xcode command line tools, a minute to install.
 
-#### 从源码构建
+#### Build from source
 
-**依赖只有 Xcode 命令行工具**，不需要 Xcode 本体：
+**The only dependency is the Xcode command line tools** — the full Xcode app is not required:
 
 ```bash
-xcode-select --install   # 如果已经装过就跳过
+xcode-select --install   # skip if already installed
 ```
 
-克隆后直接编译：
+Clone and compile:
 
 ```bash
 git clone https://github.com/zhang-1-kael/dong.git
@@ -101,126 +98,126 @@ cd dong
 open build/VideoWallpaper.app
 ```
 
-`build.sh` 用一行 `swiftc` 把 10 个 `.swift` 文件编成一个可执行文件，再组装成 `.app`。
-编译产物是 **ad-hoc 签名**，只能在你自己机器上跑；要分发给别人得走 `sign-notarize.sh`。
+`build.sh` compiles the 10 `.swift` files into a single executable with one `swiftc` line, then assembles the `.app`.
+The build is **ad-hoc signed** and only runs on your own machine; distributing it to others requires `sign-notarize.sh`.
 
-##### 可选组件
+##### Optional components
 
-下面两个都不是编译必需的，缺了只影响对应功能：
+Neither of these is required for compiling — missing one only disables the matching feature:
 
-| 组件 | 作用 | 装法 |
+| Component | Purpose | Install |
 |---|---|---|
-| **ffmpeg** | 转码、剪片头片尾、去水印、做循环 | `brew install ffmpeg`，或放到 `~/.local/bin/ffmpeg` |
-| **yt-dlp** | 粘贴链接下载 | `brew install yt-dlp`，或放可执行文件到 `vendor/yt-dlp_macos` |
+| **ffmpeg** | Transcoding, trimming head/tail, watermark removal, looping | `brew install ffmpeg`, or drop it in `~/.local/bin/ffmpeg` |
+| **yt-dlp** | Link downloads | `brew install yt-dlp`, or drop the executable at `vendor/yt-dlp_macos` |
 
-`build.sh` 会自动把找到的 ffmpeg / yt-dlp 塞进 App 包里，这样拷给别人也能用。
+`build.sh` bundles any ffmpeg / yt-dlp it finds into the app package, so the app still works when copied to another machine.
 
-> ⚠️ 本仓库**不包含**这两个二进制，也不包含内置壁纸素材 —— 见下方[许可与素材](#许可与素材)。
+> ⚠️ This repo does **not** include those two binaries, nor the built-in wallpaper assets — see [License & Assets](#license--assets).
 
-##### 打包成 DMG
+##### Package as DMG
 
 ```bash
-./package.sh                    # → dist/Dòng-<版本>.dmg
-VW_NO_PRESETS=1 ./package.sh    # 不带内置壁纸，DMG 小 360 MB
+./package.sh                    # → dist/Dòng-<version>.dmg
+VW_NO_PRESETS=1 ./package.sh    # without built-in wallpapers, the DMG is 360 MB smaller
 ```
 
-### 导入一条壁纸
+### Import a wallpaper
 
-1. 点菜单栏里的 Dòng 图标，打开面板；
-2. 把 B 站 / YouTube 链接粘进输入框（一整段分享文案也没关系，程序会自己把链接挑出来），回车；
-3. 或者直接把本地视频文件拖进壁纸库窗口；
-4. 等底部胶囊跑完 —— 通常 20~60 秒，壁纸就换上去了。
+1. Click the Dòng icon in the menu bar to open the panel;
+2. Paste a Bilibili / YouTube link into the field (a full share text is fine — the app extracts the link itself), press Enter;
+3. Or drag a local video file straight into the library window;
+4. Wait for the pill at the bottom to finish — usually 20–60 seconds, and the wallpaper switches.
 
 ---
 
-## 架构
+## Architecture
 
-四条独立的流水线，围绕一个「没有窗口的菜单栏 App」：
+Four independent pipelines around a "menu bar app with no window":
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                     菜单栏 App（LSUIElement）                 │
+│                  Menu bar app (LSUIElement)                  │
 │                                                              │
-│  ① 显示层   桌面窗口 ×N 屏  ──►  AVPlayerLayer  ──►  AVPlayerLooper│
-│  ② 处理层   yt-dlp  ──►  ffmpeg 转码  ──►  壁纸库             │
-│  ③ 界面层   菜单栏面板 / 壁纸库窗口（AppKit 全自绘）           │
-│  ④ 系统层   LaunchAgent 自启 · 目录监听 · 匿名统计             │
+│  ① Display    Desktop windows ×N  ──►  AVPlayerLayer  ──►  AVPlayerLooper │
+│  ② Pipeline   yt-dlp  ──►  ffmpeg transcode  ──►  Library   │
+│  ③ UI         Menu bar panel / library window (all AppKit)  │
+│  ④ System     LaunchAgent autostart · folder watch · stats  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-| 文件 | 行数 | 职责 |
+| File | Lines | Role |
 |---|---:|---|
-| `main.swift` | 1 833 | 显示层：桌面窗口、多屏、播放器生命周期、自动更新接线 |
-| `LibraryWindow.swift` | 2 631 | 壁纸库窗口，瀑布流布局 + 悬停预览 + 常驻透明度滑杆 |
-| `Panel.swift` | 1 654 | 菜单栏玻璃面板、果冻徽章动画，全部自绘 |
-| `Transcoder.swift` | 672 | 探测、目标尺寸、片头片尾检测、去水印、编码 |
-| `Analytics.swift` | 534 | 匿名统计 + 云服务地址（可关） |
-| `Updater.swift` | 515 | 自动更新：检查、下载、SHA256 校验、就地替换 |
-| `Downloader.swift` | 202 | yt-dlp 封装与进度解析 |
-| `FrameHealth.swift` | 320 | 卡顿看门狗与播放探针，落 diag.log |
-| `LockScreen.swift` | 70 | 抽帧设为系统壁纸 |
-| `Presets.swift` | 47 | 内置素材首次导入 |
+| `main.swift` | 1 833 | Display layer: desktop windows, multi-display, player lifecycle, auto-update wiring |
+| `LibraryWindow.swift` | 2 631 | Library window, waterfall layout + hover preview + resident opacity slider |
+| `Panel.swift` | 1 654 | Menu bar glass panel, jelly badge animation, all hand-drawn |
+| `Transcoder.swift` | 672 | Probing, target size, head/tail detection, watermark removal, encoding |
+| `Analytics.swift` | 534 | Anonymous stats + cloud service endpoint (can be disabled) |
+| `Updater.swift` | 515 | Auto-update: check, download, SHA256 verify, replace in place |
+| `Downloader.swift` | 202 | yt-dlp wrapper and progress parsing |
+| `FrameHealth.swift` | 320 | Stall watchdog and playback probes, writes diag.log |
+| `LockScreen.swift` | 70 | Grab a frame as the system wallpaper |
+| `Presets.swift` | 47 | First-run import of built-in assets |
 
-**完整的技术细节在 [`技术原理.md`](技术原理.md)**：为什么窗口要比屏幕大 24pt、
-为什么 `--deep` 签名有害、为什么循环混音必须分三段 seek、
-为什么面板自绘会把毛玻璃盖住 —— 每个坑都有记录，包括踩坑时错在哪。
+**The full technical write-up is in [`技术原理.md`](技术原理.md) (Chinese)**: why the window must be 24pt larger than the screen,
+why `--deep` signing is harmful, why loop audio mixing must seek in three segments,
+why the hand-drawn panel covers the frosted glass — every pitfall documented, including what went wrong when it was hit.
 
 ---
 
-## 命令行调试
+## Command-line debugging
 
-不想每次改算法都等整个转码跑完，内置了无头（headless）调试入口：
+Don't want to wait for a full transcode every time you tweak an algorithm? There's a built-in headless entry point:
 
 ```bash
-VideoWallpaper --detect a.mp4             # 只跑检测，0.2 秒出片头/片尾/角标判定
-VideoWallpaper --try a.mp4 out.mp4        # 跑一次完整转码到指定文件
-VideoWallpaper --import a.mp4 b.mp4       # 批量导入并打印处理结果
-VideoWallpaper --link "https://…"         # 链接下载 + 导入
+VideoWallpaper --detect a.mp4             # detection only: head/tail/watermark verdicts in 0.2 s
+VideoWallpaper --try a.mp4 out.mp4        # one full transcode to a given file
+VideoWallpaper --import a.mp4 b.mp4       # batch import, prints results
+VideoWallpaper --link "https://…"         # link download + import
 ```
 
-调试用环境变量见 `技术原理.md` 第 9 节（`VW_PANEL_SHOT`、`VW_GEOM`、`VW_DUMP_MENU` 等）。
+Debugging environment variables are in section 9 of `技术原理.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU`, etc.).
 
 ---
 
-## 已知限制
+## Known Limitations
 
-| 限制 | 原因 |
+| Limitation | Reason |
 |---|---|
-| 仅 arm64 | 编译目标与内置 ffmpeg 都是 Apple Silicon；出通用二进制要 `lipo` |
-| 锁屏是静止的 | macOS 不向第三方开放锁屏视频，抽帧是唯一不越界的做法 |
-| 多屏共用同一视频 | 每屏一个播放器，但取自同一个文件 |
-| 更新全自动 | 检查 → 下载 → 校验 SHA256 → 退出后就地替换并重开；装不了才退回打开 dmg |
-| 不接抖音链接 | 抖音启用 a_bogus 反爬，必须带登录态 cookie，匿名请求直接被拒。请先在 App 里保存到本地，再把文件拖进来 |
-| 链接下载有法律边界 | 抓取第三方平台内容，请只用于自己有权的素材 |
+| arm64 only | Build target and bundled ffmpeg are both Apple Silicon; a universal binary needs `lipo` |
+| Lock screen is static | macOS doesn't open lock-screen video to third parties; a grabbed frame is the only approach that doesn't cross the line |
+| Multi-display shares one video | One player per display, but from the same file |
+| Updates fully automatic | Check → download → verify SHA256 → replace in place and relaunch on quit; falls back to opening the dmg only if installation fails |
+| No Douyin links | Douyin enforces `a_bogus` anti-scraping and requires logged-in cookies; anonymous requests are rejected outright. Save the video in the app first, then drag the file in |
+| Link downloads have legal boundaries | When scraping third-party content, only use material you have the rights to |
 
 ---
 
-## 隐私
+## Privacy
 
-App 内置一份匿名使用统计，**只记录**：随机生成的安装 UUID、版本号、系统版本、
-CPU 架构、语言、事件名。
+The app includes anonymous usage statistics. **Recorded**: a randomly generated install UUID, version number, OS version,
+CPU architecture, language, event name.
 
-**不记录**：文件名、目录路径、链接内容、壁纸画面、任何可识别个人的信息。
-设置里可以一键关闭，关掉后立即清空本地队列并停止所有请求。
+**Not recorded**: file names, directory paths, link contents, wallpaper imagery, anything personally identifiable.
+One click in Settings turns it off; turning it off immediately clears the local queue and stops all requests.
 
-统计数据发往作者自己的服务器（`Analytics.swift` 里硬编码的地址），且**默认开启**。
-**如果你 fork 了并自己发行，请把 `Analytics.swift` 第 50 行 `isEnabled` 的默认值改成 `false`**，
-否则你的用户会往作者的服务器上报 —— 这一步不体面，但必须说清楚。
+Stats are sent to the author's own server (the address hardcoded in `Analytics.swift`) and are **on by default**.
+**If you fork this and ship your own build, change the default of `isEnabled` on line 50 of `Analytics.swift` to `false`** —
+otherwise your users will report to the author's server. That step isn't polite, but it has to be said plainly.
 
 ---
 
-## 许可与素材
+## License & Assets
 
-代码与文档以 **MIT** 授权，见 [LICENSE](LICENSE)。
+Code and documentation are licensed under **MIT** — see [LICENSE](LICENSE).
 
-**不包含在授权里的部分：**
+**Not covered by the license:**
 
-- 名称「Dòng」、`AppIcon.icns`、`BrandMark*.png` —— 品牌标识，请勿用于衍生作品的图标或名称。
-- **壁纸素材**：`presets/` 与 `bili/` 已加入 `.gitignore`，仓库里没有视频文件。
-  你自己打包时使用的素材，版权由你负责。
-- `ffmpeg` 与 `yt-dlp` 二进制不在仓库内。注意：官方 ffmpeg 的
-  `--enable-gpl --enable-nonfree` 构建**不可再分发**，对外分发应换 LGPL 构建
-  并把编码器从 `libx264` 换成 `h264_videotoolbox`。
+- The name "Dòng", `AppIcon.icns`, `BrandMark*.png` — brand marks; please don't use them for derivative names or icons.
+- **Wallpaper assets**: `presets/` and `bili/` are in `.gitignore`; there are no video files in this repo.
+  The copyright of any assets you bundle yourself is your responsibility.
+- The `ffmpeg` and `yt-dlp` binaries are not in this repo. Note: official ffmpeg builds with
+  `--enable-gpl --enable-nonfree` **cannot be redistributed**; for distribution, switch to an LGPL build
+  and change the encoder from `libx264` to `h264_videotoolbox`.
 
 ---
 
