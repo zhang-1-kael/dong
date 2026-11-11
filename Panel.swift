@@ -141,6 +141,29 @@ enum BrandMark {
         img.size = NSSize(width: 17, height: 17)
         return img
     }()
+
+    /// 摇摆动画帧：icons/JellyMenu-00..29.png / JellyBadge-00..29.png
+    /// 由 jelly-anim/export_icons.py 从 still-1024.png 的轮廓逐帧重绘（透明底，无投影），
+    /// 30 帧正好是一个完整的左右来回，首尾能无缝接上。
+    /// 资源不在时返回空数组，调用方自动退回「整张图转角度」的老办法。
+    static let menuFrames: [NSImage] = loadFrames("JellyMenu", artWidth: 23)
+
+    /// 徽章里的果冻：白底方块的 53% 宽（跟原来的静态徽章同一比例）
+    static let badgeFrames: [NSImage] = loadFrames("JellyBadge", artWidth: 29)
+
+    private static func loadFrames(_ prefix: String, artWidth: CGFloat) -> [NSImage] {
+        var out: [NSImage] = []
+        for i in 0..<64 {
+            let name = "\(prefix)-\(String(format: "%02d", i))"
+            guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
+                  let img = NSImage(contentsOf: url), img.size.width > 1 else { break }
+            // 按 3x 像素出的图，这里换算成绘制用的点尺寸；长宽比保持原样，绝不拉伸
+            let h = artWidth * img.size.height / img.size.width
+            img.size = NSSize(width: artWidth, height: h)
+            out.append(img)
+        }
+        return out
+    }
 }
 
 // MARK: - 菜单栏那颗果冻：左右晃
@@ -160,10 +183,11 @@ final class MenuBarSway {
 
     static let shared = MenuBarSway()
 
-    /// 画布比图案大一圈：18pt 的果冻转 9° 外框要 20.6pt，
-    /// 硬用 18pt 画布会把四个角削掉。所有帧统一 21pt，菜单栏宽度才不会来回跳。
-    private static let canvas: CGFloat = 21
-    private static let art: CGFloat = 18
+    /// 画布比图案大一圈：摆动到两端时外框最宽，画布太小会把角削掉，
+    /// 也太小的话菜单栏里整颗果冻会比以前的静态图标小一号。所有帧统一 24pt，
+    /// 换成定时器轮播也不会让菜单栏宽度来回跳。
+    private static let canvas: CGFloat = 24
+    private static let art: CGFloat = 23
 
     private weak var button: NSStatusBarButton?
     private var baseImage: NSImage?
@@ -216,7 +240,8 @@ final class MenuBarSway {
         frameIndex = 0
         tickCount = 0
         button.image = frames[0]
-        let interval: TimeInterval = (m == .busy) ? 1.0 / 18 : 1.0 / 15
+        // 30 帧正好一个来回：平时 2 秒晃一次，后台干活时加快到 1.25 秒，幅度不变
+        let interval: TimeInterval = (m == .busy) ? 1.0 / 24 : 1.0 / 15
         // .common 模式：光标在别处拖拽 / 菜单跟踪时也别僵住
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in self?.tick() }
         t.tolerance = interval * 0.15
@@ -231,16 +256,21 @@ final class MenuBarSway {
         tickCount += 1
     }
 
-    /// 一整个来回的帧：角速度按正弦走，两头慢中间快，才像果冻在晃而不是在抖
+    /// 一整个来回的帧。优先用真果冻动画帧（JellyMenu-*，每一帧都是弯曲形变过的），
+    /// 资源缺失时才退回老的「整张图转角度」——刚体旋转在小尺寸下看着像歪贴纸。
     private func frames(for m: Mood) -> [NSImage] {
         let key = (m == .busy) ? "busy" : "calm"
         if let hit = cache[key] { return hit }
-        let amp: CGFloat = (m == .busy) ? 9 : 7
-        let count = (m == .busy) ? 24 : 30
         var out: [NSImage] = []
-        for i in 0..<count {
-            let angle = amp * sin(2 * CGFloat.pi * CGFloat(i) / CGFloat(count))
-            if let f = Self.frame(angle: angle) { out.append(f) }
+        if !Self.composed.isEmpty {
+            out = Self.composed
+        } else {
+            let amp: CGFloat = (m == .busy) ? 9 : 7
+            let count = (m == .busy) ? 24 : 30
+            for i in 0..<count {
+                let angle = amp * sin(2 * CGFloat.pi * CGFloat(i) / CGFloat(count))
+                if let f = Self.frame(angle: angle) { out.append(f) }
+            }
         }
         cache[key] = out
         return out
@@ -263,8 +293,20 @@ final class MenuBarSway {
         }
     }
 
-    /// 把图案按角度转一下画进 2× 位图。不用 lockFocus——那玩意儿容易把堆踩坏。
-    private static func frame(angle: CGFloat) -> NSImage? {        guard let base = BrandMark.menu else { return nil }
+    /// 动画帧合成为固定画布的图。两档情绪用的是同一套姿态，只差播放速度，
+    /// 所以合成一次就够，别每次切情绪都重画 30 张。
+    private static let composed: [NSImage] = BrandMark.menuFrames.compactMap { compose($0) }
+
+    /// 老办法：把图案按角度转一下（没有动画帧时的兜底）
+    private static func frame(angle: CGFloat) -> NSImage? {
+        guard let base = BrandMark.menu else { return nil }
+        return compose(base, angle: angle)
+    }
+
+    /// 把图案画进 2× 位图。不用 lockFocus——那玩意儿容易把堆踩坏。
+    /// 长宽比按原样等比缩放后居中：动画帧是 1.2:1 的（左右晃的空间更大），
+    /// 硬塞进正方形会被拉扁，看着像被人按了一下。
+    private static func compose(_ base: NSImage, angle: CGFloat = 0) -> NSImage? {
         let scale: CGFloat = 2
         let px = Int(canvas * scale)
         guard let rep = NSBitmapImageRep(
@@ -283,8 +325,10 @@ final class MenuBarSway {
         ctx.cgContext.translateBy(x: canvas / 2, y: canvas / 2)
         ctx.cgContext.rotate(by: angle * CGFloat.pi / 180)
         ctx.cgContext.translateBy(x: -canvas / 2, y: -canvas / 2)
-        let inset = (canvas - art) / 2
-        base.draw(in: NSRect(x: inset, y: inset, width: art, height: art),
+        let bw = max(1, base.size.width), bh = max(1, base.size.height)
+        let s = min(art / bw, art / bh)
+        let w = bw * s, h = bh * s
+        base.draw(in: NSRect(x: (canvas - w) / 2, y: (canvas - h) / 2, width: w, height: h),
                   from: .zero, operation: .sourceOver, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
 
@@ -602,6 +646,104 @@ private enum PanelHit: Equatable {
     case none, library, thumb(Int)
 }
 
+// MARK: - 面板左上角的动态徽章
+
+/// 白色圆角底 + 果冻摇摆帧（跟菜单栏同一套动画）。
+/// 单独做成子视图：20fps 只重绘这 38pt 一小块，面板别的内容（缩略图、文字）
+/// 不用跟着抖，也就不会整块闪。
+final class JellyBadgeView: NSView {
+    /// 30 帧一轮 = 1.5 秒一个来回，和视频里一个摇摆周期的节奏一致
+    private static let fps: Double = 20
+    /// 视图比徽章大一圈，给投影留位置：贴着视图边画会被裁出一条硬边
+    static let shadowPad: CGFloat = 6
+
+    private var frames: [NSImage] = []
+    private var timer: Timer?
+    private var index = 0
+    /// 调试用：VW_BADGE_FREEZE=7 锁在第 7 帧不动，方便截图比对姿态
+    private static let freezeIndex = ProcessInfo.processInfo
+        .environment["VW_BADGE_FREEZE"].flatMap { Int($0) }
+    /// 调试用：VW_BADGE_DEBUG=1 时打印帧号，确认动画真的在走
+    private static let verbose = ProcessInfo.processInfo.environment["VW_BADGE_DEBUG"] != nil
+
+    override var isFlipped: Bool { true }
+    /// 图标不吃点击：面板上的鼠标事件该给谁还给谁
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        frames = BrandMark.badgeFrames
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func startAnimating() {
+        guard timer == nil, !frames.isEmpty else { return }
+        // 锁帧调试：停在指定姿态，用来截图核对上下方向对不对
+        if let f = Self.freezeIndex {
+            index = min(max(f, 0), frames.count - 1)
+            needsDisplay = true
+            return
+        }
+        // 系统开了「减弱动态效果」就停在第一帧（静止姿态）
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let t = Timer(timeInterval: 1.0 / Self.fps, repeats: true) { [weak self] _ in
+            guard let self, !self.frames.isEmpty else { return }
+            self.index = (self.index + 1) % self.frames.count
+            self.needsDisplay = true
+            if Self.verbose { print("[badge] frame \(self.index)") }
+        }
+        t.tolerance = 0.004
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    func stopAnimating() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let box = bounds.insetBy(dx: Self.shadowPad, dy: Self.shadowPad)
+        guard box.width > 1 else { return }
+        let radius = box.width * 0.185          // 跟品牌徽章同一个圆角比例
+        let path = NSBezierPath(roundedRect: box, xRadius: radius, yRadius: radius)
+
+        NSGraphicsContext.saveGraphicsState()
+        let sh = NSShadow()
+        sh.shadowBlurRadius = 5
+        sh.shadowOffset = NSSize(width: 0, height: -1.5)
+        sh.shadowColor = NSColor.black.withAlphaComponent(0.20)
+        sh.set()
+        NSColor.white.setFill()
+        path.fill()
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard !frames.isEmpty else {
+            drawUpright(BrandMark.badge, in: box)
+            return
+        }
+        let img = frames[min(index, frames.count - 1)]
+        let w = img.size.width, h = img.size.height
+        if Self.verbose, index % 15 == 0 { print("[badge] bounds=\(bounds.size) box=\(box) img=\(img.size)") }
+        drawUpright(img, in: NSRect(x: box.midX - w / 2, y: box.midY - h / 2, width: w, height: h))
+    }
+
+    /// 这个视图是 flipped（y 向下），NSImage 直接在翻过的上下文里画会上下颠倒，
+    /// 果冻就变成「头朝下抖」——所以统一取 CGImage、手动把 y 翻回来。
+    private func drawUpright(_ img: NSImage?, in rect: NSRect) {
+        guard let img,
+              let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ctx.saveGState()
+        ctx.interpolationQuality = .high
+        ctx.translateBy(x: rect.minX, y: rect.maxY)
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: rect.width, height: rect.height))
+        ctx.restoreGState()
+    }
+}
+
 final class PanelBody: NSView {
     static let width: CGFloat = 344
     /// 卡片本身的高度（不含上面那个指向图标的小尖角）
@@ -668,6 +810,8 @@ final class PanelBody: NSView {
     var onPasteLink: ((String) -> Void)?
 
     private let linkField = PanelLinkField()
+    /// 左上角会晃的果冻徽章（子视图，自己管自己的动画）
+    private let badgeView = JellyBadgeView(frame: .zero)
     private var hover: PanelHit = .none
     private var tracking: NSTrackingArea?
     private var stripOffset: CGFloat = 0
@@ -680,6 +824,8 @@ final class PanelBody: NSView {
         linkField.onSubmit = { [weak self] text in self?.submitLink(text) }
         addSubview(linkField)
         linkField.frame = linkFieldFrame
+        addSubview(badgeView)
+        badgeView.frame = badgeFrame
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -687,7 +833,17 @@ final class PanelBody: NSView {
     override func layout() {
         super.layout()
         linkField.frame = linkFieldFrame
+        badgeView.frame = badgeFrame
     }
+
+    /// 徽章视图的落点：跟 iconRect 同心，但四周多留 shadowPad 给投影
+    private var badgeFrame: NSRect {
+        iconRect.insetBy(dx: -JellyBadgeView.shadowPad, dy: -JellyBadgeView.shadowPad)
+            .offsetBy(dx: 0, dy: PanelBody.tail)
+    }
+
+    func startBadge() { badgeView.startAnimating() }
+    func stopBadge() { badgeView.stopAnimating() }
 
     /// draw() 里整块内容往下平移了 tail（把顶部尖角让出来），但那只是绘制坐标系；
     /// 子视图不在这条平移里，必须自己补上，否则链接框会比分隔线高出一个尖角的高度。
@@ -716,6 +872,20 @@ final class PanelBody: NSView {
     }
     func showImportDone(_ text: String, isError: Bool = false) {
         linkField.showDone(text, isError: isError)
+    }
+
+    /// 新素材入库后把那一颗缩略图滚进可见范围：它只是出现在这一排里，
+    /// 用不用还是用户自己点 —— 下载不该动桌面。
+    func revealThumb(_ i: Int, data: PanelData) {
+        self.data = data
+        guard let item = stripItems.first(where: { $0.index == i }) else { return }
+        let vp = stripViewport
+        if item.rect.minX < vp.minX {
+            stripOffset = min(max(stripOffset - (vp.minX - item.rect.minX), 0), maxOffset)
+        } else if item.rect.maxX > vp.maxX {
+            stripOffset = min(max(stripOffset + (item.rect.maxX - vp.maxX), 0), maxOffset)
+        }
+        needsDisplay = true
     }
 
     /// 调试用：把文字填进链接框再走一遍回车校验（不联网，只看提示）
@@ -873,7 +1043,8 @@ final class PanelBody: NSView {
     }
 
     private func drawHeader() {
-        drawIcon()
+        // 徽章是子视图自己在画（带动画），这里只在视图缺位时兜底
+        if badgeView.superview == nil { drawIcon() }
         text("Dòng", titleRect, size: 15.5, weight: .semibold, color: Ink.primary)
         // 原来这下面是「● 正在播放」，跟下面的「正在使用」重复，去掉了；
         // 换成三五个字的静态信息，做小做淡，不抢照片。
@@ -1292,6 +1463,11 @@ final class MenuPanelController: NSWindowController {
         body.showImportDone(text, isError: isError)
     }
 
+    /// 导入完成后把新缩略图滚进可见范围（只是露面，不替用户换壁纸）
+    func revealThumb(_ i: Int, data: PanelData) {
+        body.revealThumb(i, data: data)
+    }
+
     func show(relativeTo button: NSStatusBarButton, data: PanelData) {
         body.data = data
         guard let win = window, let buttonWindow = button.window else { return }
@@ -1327,6 +1503,7 @@ final class MenuPanelController: NSWindowController {
         win.makeKey()
         win.makeFirstResponder(body)
         body.onCancel = { [weak self] in self?.dismiss() }
+        body.startBadge()
         playIn()
         installMonitors()
     }
@@ -1429,6 +1606,7 @@ final class MenuPanelController: NSWindowController {
         removeMonitors()
         playOut { [weak self] in
             guard let self else { return }
+            self.body.stopBadge()
             self.window?.orderOut(nil)
             self.closing = false
             self.releaseActivation()

@@ -1053,6 +1053,62 @@ final class LinkField: NSView, NSTextFieldDelegate {
     }
 }
 
+// MARK: - 底栏的极简滑杆
+
+/// 底栏用的细滑杆：一条 3pt 细轨 + 9pt 圆点，单色白，不参与系统强调色。
+/// 不用 NSSlider 的原因：它的强调色是一条很跳的绿线，跟窗口里的橙色图标打架，
+/// 而且控件本身太重——一个"调光"的东西不该比内容更显眼。
+final class MiniSlider: NSView {
+    var onChange: ((CGFloat) -> Void)?
+    /// 0…1，越右越透
+    var value: CGFloat = 0.88 {
+        didSet {
+            let clamped = min(1, max(0, value))
+            if clamped != value { value = clamped; return }
+            needsDisplay = true
+        }
+    }
+
+    override var isFlipped: Bool { true }
+    override var intrinsicContentSize: NSSize { NSSize(width: 78, height: 18) }
+
+    private let trackHeight: CGFloat = 3
+    private let knobDiameter: CGFloat = 9
+
+    override func draw(_ dirtyRect: NSRect) {
+        let mid = bounds.midY
+        // 空轨
+        let track = NSRect(x: 0, y: mid - trackHeight / 2,
+                           width: bounds.width, height: trackHeight)
+        NSColor.white.withAlphaComponent(0.22).setFill()
+        NSBezierPath(roundedRect: track, xRadius: trackHeight / 2, yRadius: trackHeight / 2).fill()
+
+        // 已选段 + 圆点
+        let knobX = knobDiameter / 2 + (bounds.width - knobDiameter) * value
+        let filled = NSRect(x: 0, y: mid - trackHeight / 2, width: knobX, height: trackHeight)
+        NSColor.white.withAlphaComponent(0.72).setFill()
+        NSBezierPath(roundedRect: filled, xRadius: trackHeight / 2, yRadius: trackHeight / 2).fill()
+
+        NSColor.white.setFill()
+        NSBezierPath(ovalIn: NSRect(x: knobX - knobDiameter / 2, y: mid - knobDiameter / 2,
+                                    width: knobDiameter, height: knobDiameter)).fill()
+    }
+
+    override func mouseDown(with event: NSEvent) { apply(event) }
+    override func mouseDragged(with event: NSEvent) { apply(event) }
+
+    private func apply(_ event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let usable = max(1, bounds.width - knobDiameter)
+        value = (p.x - knobDiameter / 2) / usable
+        onChange?(value)
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
 // MARK: - 底部程序坞上的方形磁贴
 
 /// 程序坞风格：一个个圆角方形磁贴，只放图标；鼠标悬停时由外面弹出名字气泡。
@@ -1332,19 +1388,90 @@ final class StatusPill: NSView {
     }
 }
 
+// MARK: - 壁纸库窗口透明度
+
+/// 「窗口透明度」设置的存取 + 变更广播。值域 0…1，语义和网易云那个滑杆一致：
+/// **数值越大越透**。0 = 一片深色实底，1 = 几乎全透、只剩系统模糊。
+///
+/// 内部仍按"涂层浓度"算（frost = 1 - transparency）：浓度是画的时候要的参数，
+/// 透明度是给人看的参数，两者别混在一个名字里。
+enum LibraryBackdrop {
+    /// ShellView 监听它，收到就重画涂层，滑杆一拖窗口立刻跟上
+    static let changed = Notification.Name("VWLibraryBackdropChanged")
+    private static let key = "VWLibraryTransparency"
+    /// 默认 0.88：几乎全透。桌面壁纸能清楚透上来，只留一层很淡的暗色压着卡片。
+    static let defaultTransparency: CGFloat = 0.88
+
+    /// 0 = 实色，1 = 几乎全透
+    static var transparency: CGFloat {
+        get {
+            let ud = UserDefaults.standard
+            guard ud.object(forKey: key) != nil else { return defaultTransparency }
+            return min(1, max(0, CGFloat(ud.double(forKey: key))))
+        }
+        set {
+            UserDefaults.standard.set(Double(min(1, max(0, newValue))), forKey: key)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    /// 画的时候用的涂层浓度 = 1 - 透明度
+    static var frost: CGFloat { 1 - transparency }
+}
+
 // MARK: - 接收拖拽的外壳
 
-/// 窗口外壳：一块透明玻璃。
-/// 不做背景模糊（原来 `NSVisualEffectView` 的材质会把桌面糊成一片奶白），
-/// 只上一层极淡的白渐变 + 一圈细边，桌面从底下透上来，缩略图才像"浮"在桌面上的。
+/// 窗口外壳：一层磨砂底衬。
+/// 和菜单栏面板（`PanelGlass` 用系统 `.menu` 材质做真模糊）保持同一个观感家族，
+/// 但这里不做模糊：桌面是一段正在播放的视频，逐帧重算模糊既费 GPU，糊出来的颜色也在跳。
+/// 所以只用一层均匀的半透明底衬——桌面透得上来，但不会跟着视频一帧一帧变亮变暗，
+/// 缩略图仍然像"浮"在桌面上。
 final class ShellView: NSView {
     static let radius: CGFloat = 16
+
+    /// 涂层浓度（上、下）只由 frost 决定：frost 0 → 2%，frost 1 → 88%。
+    ///
+    /// **亮暗都用深色玻璃**：亮色模式下铺一层白雾只会把桌面糊成一片灰，越透越脏；
+    /// 深色玻璃才是"透出来但压得住"，缩略图也才浮得起来。这条是照用户给的录屏定的，别再改回按亮暗分色。
+    private static func matteAlphas(frost: CGFloat) -> (top: CGFloat, bottom: CGFloat) {
+        let mid = 0.02 + 0.86 * frost
+        // 只够分出上下，不构成高光——玻璃面不该反光
+        let delta: CGFloat = 0.02
+        return (min(1, mid + delta), max(0, mid - delta))
+    }
+
+    /// 调试钩子：`VW_MATTE=0.18,0.12` 临时覆盖浓度（上,下），不重编译就能比几档。
+    private static let matteOverride: (top: CGFloat, bottom: CGFloat)? = {
+        guard let raw = ProcessInfo.processInfo.environment["VW_MATTE"] else { return nil }
+        let parts = raw.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 2 else { return nil }
+        return (CGFloat(parts[0]), CGFloat(parts[1]))
+    }()
+
+    /// 颗粒噪声的浓度。磨砂面之所以"像磨砂"，靠的就是这层极细的颗粒：
+    /// 只有 3% 的不透明度、1 个物理像素大小的点，正常观看距离下看不见，
+    /// 但它会打散底衬上那层渐变带来的"塑料膜感"，让半透明面读起来像材质而不是一块蒙版。
+    /// 实测 2% 完全看不见，5% 近看偏脏，3% 是"远看是哑光面、凑近有质感"的平衡点。
+    /// 调试钩子：`VW_GRAIN=0.05` 临时覆盖浓度。
+    private static let grainAlpha: CGFloat = {
+        guard let raw = ProcessInfo.processInfo.environment["VW_GRAIN"],
+              let v = Double(raw) else { return 0.03 }
+        return CGFloat(v)
+    }()
+    private static let grainTile = 256
+    /// 噪声图只画一次，之后平铺——每帧随机描点在 Retina 上会卡。
+    private static var grainImage: NSImage?
 
     var onDrop: (([URL]) -> Void)?
     var onDragStateChange: ((Bool) -> Void)?
     private var accepts = false
+    private var backdropObserver: NSObjectProtocol?
 
     override var isOpaque: Bool { false }
+
+    private var isDark: Bool {
+        effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -1352,21 +1479,94 @@ final class ShellView: NSView {
         layer?.cornerRadius = Self.radius
         layer?.masksToBounds = true
         layer?.borderWidth = 1
+        // 磨砂的边不是反光边，压得比玻璃薄一点
         layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
         registerForDraggedTypes([.fileURL])
+        // 滑杆动了就重画涂层（浓度只影响 draw，不用重建任何视图）
+        backdropObserver = NotificationCenter.default.addObserver(
+            forName: LibraryBackdrop.changed, object: nil, queue: .main
+        ) { [weak self] _ in self?.needsDisplay = true }
+    }
+
+    deinit {
+        if let o = backdropObserver { NotificationCenter.default.removeObserver(o) }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        // 深色玻璃的边：亮暗都只是极淡一圈，别做成反光的亮环
+        layer?.borderColor = NSColor.white.withAlphaComponent(isDark ? 0.14 : 0.18).cgColor
+        needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds, xRadius: Self.radius, yRadius: Self.radius)
-        let top = NSColor.white.withAlphaComponent(0.20)
-        let bottom = NSColor.white.withAlphaComponent(0.05)
+        let frost = LibraryBackdrop.frost
+        let alphas = Self.matteOverride ?? Self.matteAlphas(frost: frost)
+        let base = NSColor.black
+        let top = base.withAlphaComponent(alphas.top)
+        let bottom = base.withAlphaComponent(alphas.bottom)
+        // 单向极淡的渐变只为让窗口有上下之分，不是高光——玻璃面不该反光
         if let g = NSGradient(starting: bottom, ending: top) {
             g.draw(in: path, angle: 90)
         } else {
             top.setFill()
             path.fill()
         }
+        // 裁剪在圆角内，颗粒不会溢出到窗口外面。
+        // 平铺尺寸取整到点，避免 256 除不尽时出现一条接缝。
+        NSGraphicsContext.saveGraphicsState()
+        path.addClip()
+        let tileW = ceil(bounds.width / Self.grainScale) * Self.grainScale
+        let tileH = ceil(bounds.height / Self.grainScale) * Self.grainScale
+        // 颗粒跟着浓度走：越透越不该有颗粒。全透时还留点点，会在深色桌面上变成一片脏雪花。
+        Self.grain().draw(in: NSRect(x: 0, y: 0, width: tileW, height: tileH),
+                          from: .zero,
+                          operation: .sourceOver,
+                          fraction: min(1, max(0, frost)),
+                          respectFlipped: true,
+                          hints: [.interpolation: NSImageInterpolation.none.rawValue])
+        NSGraphicsContext.restoreGraphicsState()
     }
+
+    /// 平铺用的颗粒图。按屏幕的 2 倍图来画：这样每个噪点正好落在 1 个物理像素上，
+    /// 不会被整数放大成 2×2 的硬边方块（那样看着像马赛克，不像磨砂）。
+    private static func grain() -> NSImage {
+        if let cached = grainImage { return cached }
+        let side = grainTile
+        let scale: CGFloat = 2
+        let px = side * 2
+        let img = NSImage(size: NSSize(width: side, height: side))
+        // 用 lockFocus 拿到带正确色彩空间的上下文，再把坐标系放大 2 倍，
+        // 于是一个"1 点"的方块正好落在 1 个物理像素上。
+        img.lockFocus()
+        if let ctx = NSGraphicsContext.current {
+            ctx.imageInterpolation = .none
+            ctx.cgContext.scaleBy(x: scale, y: scale)
+        }
+        var seed: UInt64 = 0x9E37_79B9_7F4A_7C15
+        let a = grainAlpha
+        for y in 0..<px {
+            for x in 0..<px {
+                // xorshift：只要够乱就行，不需要统计意义上的好随机
+                seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17
+                let r = CGFloat(seed & 0xFFFF) / 65535
+                // 黑点多、白点少：白点会在暗色壁纸上先"冒出来"，压住它的比例
+                let white = r > 0.55
+                let c = white ? NSColor.white : NSColor.black
+                c.withAlphaComponent(white ? a * 0.6 : a).setFill()
+                NSRect(x: CGFloat(x) / scale, y: CGFloat(y) / scale,
+                       width: 1 / scale, height: 1 / scale).fill()
+            }
+        }
+        img.unlockFocus()
+        // 记住缩放，绘制时才知道该按哪个倍数取样
+        grainScale = scale
+        grainImage = img
+        return img
+    }
+
+    private static var grainScale: CGFloat = 1
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -1591,7 +1791,7 @@ final class GalleryScrollView: NSScrollView {
 
 // MARK: - 窗口
 
-final class LibraryWindowController: NSWindowController {
+final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
     private weak var delegate: WallpaperLibraryDelegate?
     private let gallery = GalleryView()
@@ -1611,7 +1811,7 @@ final class LibraryWindowController: NSWindowController {
             backing: .buffered,
             defer: false)
         win.title = "壁纸库"
-        win.minSize = NSSize(width: 720, height: 460)
+        win.minSize = NSSize(width: 760, height: 460)
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.backgroundColor = .clear
@@ -1632,9 +1832,28 @@ final class LibraryWindowController: NSWindowController {
     private func buildUI() {
         guard let win = window else { return }
 
+        // 底衬：`.behindWindow` 的系统真模糊，跟设置弹层同一个材质家族。
+        // 窗口后面的桌面（正在播的视频）会被真正"糊"进底衬，磨砂感是实打实的。
+        // ShellView 的半透明涂层铺在它上面，浓度由设置弹层的「背景模糊度」滑杆控制。
+        let backdrop = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 1060, height: 730))
+        backdrop.material = .popover
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        // 材质跟着系统外观走：亮色系统下 `.popover` 是浅色的，上面再压深色涂层只会得到一片脏灰。
+        // 钉成深色，才是录屏里那种"深色玻璃透出桌面"的样子，亮暗系统都一样。
+        backdrop.appearance = NSAppearance(named: .darkAqua)
+        win.contentView = backdrop
+
         let shell = ShellView(frame: NSRect(x: 0, y: 0, width: 1060, height: 730))
+        shell.translatesAutoresizingMaskIntoConstraints = false
+        backdrop.addSubview(shell)
+        NSLayoutConstraint.activate([
+            shell.leadingAnchor.constraint(equalTo: backdrop.leadingAnchor),
+            shell.trailingAnchor.constraint(equalTo: backdrop.trailingAnchor),
+            shell.topAnchor.constraint(equalTo: backdrop.topAnchor),
+            shell.bottomAnchor.constraint(equalTo: backdrop.bottomAnchor),
+        ])
         dropTarget = shell
-        win.contentView = shell
 
         shell.onDrop = { [weak self] urls in self?.delegate?.libraryAdd(urls: urls) }
         shell.onDragStateChange = { [weak self] on in self?.overlay.setVisible(on) }
@@ -1652,10 +1871,11 @@ final class LibraryWindowController: NSWindowController {
         }
         self.linkField = linkField
 
-        // 底座：一条几乎看不见底的清水玻璃，只借模糊和一缕反光"托"住里面的东西。
+        // 底座：一条几乎看不见底的深色玻璃，只借模糊和一缕反光"托"住里面的东西。
+        // 窗口已经是深色玻璃了，底栏再走浅色会出现"白条上压白字"，所以跟窗口同一路。
         // floating 让它整块抬起，底下带一层柔和的投影，卡片从阴影里穿过去。
-        let bar = GlassView(radius: 22, tint: 0.07, material: .popover,
-                            chrome: .clear, floating: true)
+        let bar = GlassView(radius: 22, tint: 0.10, material: .popover,
+                            chrome: .dark, floating: true)
 
         let enabledPill = SettingPill(title: "动态", symbol: "play.fill", on: true)
         enabledPill.onText = "动态"
@@ -1688,24 +1908,75 @@ final class LibraryWindowController: NSWindowController {
         let folderPill = SettingPill(actionTitle: "打开文件夹", symbol: "folder")
         folderPill.onTap = { [weak self] in self?.delegate?.libraryRevealFolder() }
 
-        for p in [enabledPill, lockPill, autoPill, folderPill] {
+        // 设置：匿名统计开关 + 检查更新，都放进一个小弹层，不占底栏地方
+        let settingsPill = SettingPill(actionTitle: "设置", symbol: "gearshape")
+        settingsPill.onTap = { [weak self, weak settingsPill] in
+            guard let self, let anchor = settingsPill else { return }
+            self.toggleSettings(from: anchor)
+        }
+
+        for p in [enabledPill, lockPill, autoPill, folderPill, settingsPill] {
             p.onHoverChange = { [weak self, weak p] on in
                 guard let self, let p else { return }
                 on ? self.showTip(for: p) : self.dockTip?.hide()
             }
         }
 
-        let divider = NSView()
-        divider.wantsLayer = true
-        divider.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.13).cgColor
-        divider.translatesAutoresizingMaskIntoConstraints = false
-        divider.widthAnchor.constraint(equalToConstant: 1).isActive = true
-        divider.heightAnchor.constraint(equalToConstant: 16).isActive = true
+        // 窗口透明度：常驻底栏，一拖就变。语义和录屏里那个滑杆一致——越往右越透。
+        // 只给一层很淡的暗色，不能做成有底色的胶囊，否则又变成"一块实心控件"。
+        let transparencyIcon = NSImageView()
+        transparencyIcon.image = NSImage(systemSymbolName: "circle.lefthalf.filled",
+                                        accessibilityDescription: "窗口透明度")
+        transparencyIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
+        transparencyIcon.contentTintColor = .secondaryLabelColor
+        transparencyIcon.translatesAutoresizingMaskIntoConstraints = false
 
-        let pills = NSStackView(views: [enabledPill, lockPill, autoPill, divider, folderPill])
+        let barSlider = MiniSlider()
+        barSlider.value = LibraryBackdrop.transparency
+        barSlider.toolTip = "窗口透明度：越往右越透"
+        barSlider.onChange = { [weak self] v in self?.applyTransparency(v) }
+        barSlider.translatesAutoresizingMaskIntoConstraints = false
+        // 宽度可伸缩：窗口宽就 78pt，拉窄时先压滑杆，别把右边几个开关挤出去
+        let sliderPref = barSlider.widthAnchor.constraint(equalToConstant: 78)
+        sliderPref.priority = .defaultHigh
+        sliderPref.isActive = true
+        barSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 46).isActive = true
+        barSlider.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        self.barSlider = barSlider
+
+        let barPct = NSTextField(labelWithString: "\(Int(round(LibraryBackdrop.transparency * 100)))%")
+        barPct.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
+        barPct.textColor = .secondaryLabelColor
+        barPct.alignment = .right
+        barPct.translatesAutoresizingMaskIntoConstraints = false
+        barPct.widthAnchor.constraint(equalToConstant: 26).isActive = true
+        self.barPct = barPct
+
+        let transparencyRow = NSStackView(views: [transparencyIcon, barSlider, barPct])
+        transparencyRow.orientation = .horizontal
+        transparencyRow.alignment = .centerY
+        transparencyRow.spacing = 6
+        transparencyRow.translatesAutoresizingMaskIntoConstraints = false
+
+        /// 开关之间的竖线：两条都用同一个做法，别让粗细/透明度各走各的
+        func makeDivider() -> NSView {
+            let d = NSView()
+            d.wantsLayer = true
+            d.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.13).cgColor
+            d.translatesAutoresizingMaskIntoConstraints = false
+            d.widthAnchor.constraint(equalToConstant: 1).isActive = true
+            d.heightAnchor.constraint(equalToConstant: 16).isActive = true
+            return d
+        }
+        let divider = makeDivider()
+
+        let pills = NSStackView(views: [transparencyRow, makeDivider(),
+                                        enabledPill, lockPill, autoPill, divider,
+                                        folderPill, settingsPill])
         pills.orientation = .horizontal
         pills.spacing = 6
         pills.alignment = .centerY
+        pills.setCustomSpacing(10, after: transparencyRow)
         pills.setCustomSpacing(10, after: autoPill)
         pills.setCustomSpacing(10, after: divider)
         pills.translatesAutoresizingMaskIntoConstraints = false
@@ -1763,7 +2034,7 @@ final class LibraryWindowController: NSWindowController {
             linkField.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 9),
             linkField.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
             linkField.heightAnchor.constraint(equalToConstant: 30),
-            linkField.widthAnchor.constraint(greaterThanOrEqualToConstant: 170),
+            linkField.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
             linkField.widthAnchor.constraint(lessThanOrEqualToConstant: 330),
 
             // 开关组：贴右边，跟链接框之间留一点空
@@ -1816,6 +2087,17 @@ final class LibraryWindowController: NSWindowController {
     private var enabledPill: SettingPill?
     private var lockPill: SettingPill?
     private var autoPill: SettingPill?
+    /// 设置弹层（匿名统计开关 + 检查更新）
+    private var settingsPop: NSPopover?
+    private var settingsSwitch: NSSwitch?
+    private var settingsAction: NSButton?
+    private var settingsStatus: NSTextField?
+    private var settingsBlurPct: NSTextField?
+    private var settingsBlurSlider: NSSlider?
+    /// 底栏常驻的「窗口透明度」：滑杆 + 百分比，和设置弹层里那个是同一份值
+    private var barSlider: MiniSlider?
+    private var barPct: NSTextField?
+    private var settingsTimer: Timer?
     private var hoverTestStarted = false
     /// 提示的自动收起计时器（换新内容时作废重排）
     private var busyHideWork: DispatchWorkItem?
@@ -1826,6 +2108,236 @@ final class LibraryWindowController: NSWindowController {
         enabledPill?.setOn(delegate.libraryIsEnabled())
         lockPill?.setOn(delegate.libraryIsLockSync())
         autoPill?.setOn(delegate.libraryIsAutostart())
+    }
+
+    // MARK: 设置弹层（匿名统计 + 更新）
+
+    /// 调试用：把设置弹层那块内容画成 PNG（弹层是独立窗口，截不到，只能自己渲染）
+    func debugSnapshotSettings(to path: String) {
+        let vc = makeSettingsController()
+        guard let v = vc.view as NSView? else { return }
+        v.layoutSubtreeIfNeeded()
+        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        if let data = rep.representation(using: .png, properties: [:]) {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
+        print("[settings] shot size=\(v.bounds.size) analytics=\(Analytics.shared.isEnabled)")
+    }
+
+    private func toggleSettings(from anchor: NSView) {
+        if let pop = settingsPop, pop.isShown {
+            pop.performClose(nil)
+            return
+        }
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.animates = true
+        pop.contentViewController = makeSettingsController()
+        pop.delegate = self
+        pop.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        settingsPop = pop
+
+        refreshSettingsState()
+        settingsTimer?.invalidate()
+        let t = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
+            self?.refreshSettingsState()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        settingsTimer = t
+    }
+
+    private func makeSettingsController() -> NSViewController {
+        let vc = NSViewController()
+        // 宽度按文档那段说明的阅读舒适度定：一行 22 个汉字上下
+        let width: CGFloat = 330
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 220))
+        root.wantsLayer = true
+
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 9
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: root.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+
+        // 标题
+        let title = NSTextField(labelWithString: "设置")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
+        stack.addArrangedSubview(title)
+
+        // 统计开关：名字和说明都是文档里定好的原文，别改
+        let row = NSStackView()
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        let label = NSTextField(labelWithString: "发送匿名使用统计")
+        label.font = .systemFont(ofSize: 12.5)
+        let sw = NSSwitch()
+        sw.state = Analytics.shared.isEnabled ? .on : .off
+        sw.target = self
+        sw.action = #selector(analyticsSwitchChanged(_:))
+        settingsSwitch = sw
+        row.addArrangedSubview(label)
+        row.addArrangedSubview(sw)
+        stack.addArrangedSubview(row)
+        row.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        let note = NSTextField(wrappingLabelWithString:
+            "帮助我们了解哪些功能好用。仅记录使用次数与成败，不含任何文件名、链接或个人信息，"
+            + "可在设置中彻底关闭。")
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.maximumNumberOfLines = 0
+        note.preferredMaxLayoutWidth = width - 32
+        stack.addArrangedSubview(note)
+        note.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        // 窗口透明度：调壁纸库窗口底衬的浓度，拖动立即生效。
+        // 语义和录屏里那个滑杆一致：数值越大越透。
+        let blurRow = NSStackView()
+        blurRow.orientation = .horizontal
+        blurRow.alignment = .centerY
+        blurRow.spacing = 8
+        let blurLabel = NSTextField(labelWithString: "窗口透明度")
+        blurLabel.font = .systemFont(ofSize: 12.5)
+        let blurSlider = NSSlider(value: Double(LibraryBackdrop.transparency) * 100,
+                                  minValue: 0, maxValue: 100,
+                                  target: self, action: #selector(blurSliderChanged(_:)))
+        blurSlider.controlSize = .small
+        let blurPct = NSTextField(labelWithString: "\(Int(round(LibraryBackdrop.transparency * 100)))%")
+        blurPct.font = .systemFont(ofSize: 11)
+        blurPct.textColor = .secondaryLabelColor
+        blurPct.setContentHuggingPriority(.required, for: .horizontal)
+        settingsBlurPct = blurPct
+        settingsBlurSlider = blurSlider
+        blurRow.addArrangedSubview(blurLabel)
+        blurRow.addArrangedSubview(blurSlider)
+        blurRow.addArrangedSubview(blurPct)
+        stack.addArrangedSubview(blurRow)
+        blurRow.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+        blurSlider.widthAnchor.constraint(equalToConstant: 130).isActive = true
+
+        let line = NSBox()
+        line.boxType = .separator
+        stack.addArrangedSubview(line)
+        line.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        // 版本 + 检查更新
+        let ver = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        let versionRow = NSStackView()
+        versionRow.orientation = .horizontal
+        versionRow.alignment = .centerY
+        versionRow.spacing = 8
+        let verLabel = NSTextField(labelWithString: "Dòng \(ver)（\(build)）")
+        verLabel.font = .systemFont(ofSize: 11.5)
+        verLabel.textColor = .secondaryLabelColor
+        let btn = NSButton(title: "检查更新", target: self, action: #selector(updateButtonTapped))
+        btn.bezelStyle = .rounded
+        btn.controlSize = .small
+        btn.font = .systemFont(ofSize: 11.5)
+        settingsAction = btn
+        versionRow.addArrangedSubview(verLabel)
+        versionRow.addArrangedSubview(NSView())      // 中间留白，把按钮推到右边
+        versionRow.addArrangedSubview(btn)
+        stack.addArrangedSubview(versionRow)
+        versionRow.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        let status = NSTextField(wrappingLabelWithString: "")
+        status.font = .systemFont(ofSize: 11)
+        status.textColor = .secondaryLabelColor
+        status.maximumNumberOfLines = 0
+        status.preferredMaxLayoutWidth = width - 32
+        settingsStatus = status
+        stack.addArrangedSubview(status)
+        status.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        vc.view = root
+        // 高度按内容长：弹层不留大片空白
+        root.layoutSubtreeIfNeeded()
+        let h = max(stack.fittingSize.height, 120)
+        root.setFrameSize(NSSize(width: width, height: h))
+        vc.preferredContentSize = NSSize(width: width, height: h)
+        refreshSettingsState()
+        return vc
+    }
+
+    @objc private func analyticsSwitchChanged(_ sender: NSSwitch) {
+        let on = sender.state == .on
+        // 关的时候内部会先把 analytics_toggle 发出去、再清队列删 ID
+        Analytics.shared.setEnabled(on)
+        refreshSettingsState()
+    }
+
+    @objc private func blurSliderChanged(_ sender: NSSlider) {
+        let v = CGFloat(sender.doubleValue / 100)
+        LibraryBackdrop.transparency = v
+        settingsBlurPct?.stringValue = "\(Int(round(sender.doubleValue)))%"
+        barSlider?.value = v
+        barPct?.stringValue = "\(Int(round(sender.doubleValue)))%"
+    }
+
+    /// 底栏那个滑杆：和设置弹层里的是同一份值，拖哪个另一个都跟着走
+    private func applyTransparency(_ value: CGFloat) {
+        LibraryBackdrop.transparency = value
+        barPct?.stringValue = "\(Int(round(value * 100)))%"
+        settingsBlurSlider?.doubleValue = Double(value) * 100
+        settingsBlurPct?.stringValue = "\(Int(round(value * 100)))%"
+    }
+
+    @objc private func updateButtonTapped() {
+        if case .installing = Updater.shared.state { return }
+        if let r = Updater.shared.pendingRelease {
+            Updater.shared.download(r)
+        } else {
+            Updater.shared.check(manual: true)
+        }
+        refreshSettingsState()
+    }
+
+    /// 把 Analytics / Updater 的当前状态画到弹层上
+    private func refreshSettingsState() {
+        settingsSwitch?.state = Analytics.shared.isEnabled ? .on : .off
+        guard let btn = settingsAction, let status = settingsStatus else { return }
+
+        switch Updater.shared.state {
+        case .idle:
+            btn.title = "检查更新"
+            status.stringValue = Analytics.shared.isEnabled
+                ? "统计已开启；关掉后本地队列会清空，不再发送任何请求。"
+                : "统计已关闭，不会发送任何数据。"
+        case .checking:
+            btn.title = "检查中…"
+            status.stringValue = "正在向服务器查询最新版本…"
+        case .upToDate:
+            btn.title = "检查更新"
+            status.stringValue = "已经是最新版本了。"
+        case .available(let r):
+            btn.title = "立即更新"
+            status.stringValue = "新版本 \(r.displayName) 可用"
+                + (r.sizeText.isEmpty ? "。" : "（\(r.sizeText)）。")
+                + (r.notes.isEmpty ? "" : "\n\(r.notes)")
+        case .downloading(let r, let p):
+            btn.title = "下载中…"
+            status.stringValue = "正在下载 \(r.displayName)（\(Int(p * 100))%）…"
+        case .ready(let r, _):
+            btn.title = "检查更新"
+            status.stringValue = "\(r.displayName) 已下载，把 Dòng 拖进「应用程序」即可。"
+        case .installing(let r):
+            btn.title = "安装中…"
+            status.stringValue = "正在把 \(r.displayName) 装进去，装好会自动重开。"
+        case .failed(let msg):
+            btn.title = "重试"
+            status.stringValue = msg
+        }
     }
 
     private func roundedFont(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
@@ -1888,6 +2400,10 @@ final class LibraryWindowController: NSWindowController {
         // 关窗时鼠标可能正压在某张卡上（收不到 mouseExited），开窗先统一归零，
         // 免得一进来就有卡片挂着名字、还在后台放视频
         gallery.clearHoverState()
+        // 透明度可能被设置弹层改过，开窗按当前值对齐一次
+        let t = LibraryBackdrop.transparency
+        barSlider?.value = t
+        barPct?.stringValue = "\(Int(round(t * 100)))%"
         // 进来就能直接打字，不用先点一次输入框
         DispatchQueue.main.async { [weak self] in self?.linkField?.focus() }
         // 调试：把粘贴板塞进指定内容后走一遍粘贴，输出结果

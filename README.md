@@ -4,18 +4,18 @@
   <p>把任何视频，变成会动的桌面。<br>
   <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
   <a href="#installation">下载 for macOS</a><br>
-  <i>~ 版本 3.18 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
+  <i>~ 版本 3.31 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
 </div>
 
 > [!NOTE]
 >
-> Dòng 是一个完全用 Swift 和 AppKit 写的 macOS 动态壁纸工具 —— 约 6,200 行代码，零第三方框架，
+> Dòng 是一个完全用 Swift 和 AppKit 写的 macOS 动态壁纸工具 —— 约 8,500 行代码，零第三方框架，
 > 没有 Electron、没有 SwiftUI、没有一颗 Pod。
 > 贴一条视频链接，或拖进一个本地视频，它会自动下载、裁剪、拼接成无缝循环，铺在你的桌面上。
 
 <h6 align="center">
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
-  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.18-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.18"></a>
+  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&labelColor=23272A&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
@@ -94,7 +94,7 @@ cd dong
 open build/VideoWallpaper.app
 ```
 
-`build.sh` 用一行 `swiftc` 把 8 个 `.swift` 文件编成一个可执行文件，再组装成 `.app`。
+`build.sh` 用一行 `swiftc` 把 10 个 `.swift` 文件编成一个可执行文件，再组装成 `.app`。
 编译产物是 **ad-hoc 签名**，只能在你自己机器上跑；要分发给别人得走 `sign-notarize.sh`。
 
 ##### 可选组件
@@ -143,12 +143,14 @@ VW_NO_PRESETS=1 ./package.sh    # 不带内置壁纸，DMG 小 360 MB
 
 | 文件 | 行数 | 职责 |
 |---|---:|---|
-| `main.swift` | 1 308 | 显示层：桌面窗口、多屏、播放器生命周期 |
-| `LibraryWindow.swift` | 2 118 | 壁纸库窗口，瀑布流布局 + 悬停预览 |
-| `Panel.swift` | 1 476 | 菜单栏玻璃面板，全部自绘 |
+| `main.swift` | 1 833 | 显示层：桌面窗口、多屏、播放器生命周期、自动更新接线 |
+| `LibraryWindow.swift` | 2 631 | 壁纸库窗口，瀑布流布局 + 悬停预览 + 常驻透明度滑杆 |
+| `Panel.swift` | 1 654 | 菜单栏玻璃面板、果冻徽章动画，全部自绘 |
 | `Transcoder.swift` | 672 | 探测、目标尺寸、片头片尾检测、去水印、编码 |
-| `Analytics.swift` | 276 | 匿名统计（可关） |
-| `Downloader.swift` | 160 | yt-dlp 封装与进度解析 |
+| `Analytics.swift` | 534 | 匿名统计 + 云服务地址（可关） |
+| `Updater.swift` | 515 | 自动更新：检查、下载、SHA256 校验、就地替换 |
+| `Downloader.swift` | 202 | yt-dlp 封装与进度解析 |
+| `FrameHealth.swift` | 320 | 卡顿看门狗与播放探针，落 diag.log |
 | `LockScreen.swift` | 70 | 抽帧设为系统壁纸 |
 | `Presets.swift` | 47 | 内置素材首次导入 |
 
@@ -180,7 +182,7 @@ VideoWallpaper --link "https://…"         # 链接下载 + 导入
 | 仅 arm64 | 编译目标与内置 ffmpeg 都是 Apple Silicon；出通用二进制要 `lipo` |
 | 锁屏是静止的 | macOS 不向第三方开放锁屏视频，抽帧是唯一不越界的做法 |
 | 多屏共用同一视频 | 每屏一个播放器，但取自同一个文件 |
-| 更新要手动拖 | 自己实现的更新检查：下载、校验 SHA256、打开 dmg，但不静默替换安装 |
+| 更新全自动 | 检查 → 下载 → 校验 SHA256 → 退出后就地替换并重开；装不了才退回打开 dmg |
 | 不接抖音链接 | 抖音启用 a_bogus 反爬，必须带登录态 cookie，匿名请求直接被拒。请先在 App 里保存到本地，再把文件拖进来 |
 | 链接下载有法律边界 | 抓取第三方平台内容，请只用于自己有权的素材 |
 

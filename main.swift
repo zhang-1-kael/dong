@@ -1,5 +1,6 @@
 import Cocoa
 import AVFoundation
+import CoreImage
 
 // MARK: - 桌面层窗口（不吃焦点、不响应鼠标）
 
@@ -16,11 +17,16 @@ final class WallpaperWindow: NSWindow {
 final class WallpaperView: NSView {
     /// 前景：画面。默认铺满裁切；只有竖屏视频才按"完整显示"
     let playerLayer = AVPlayerLayer()
-    /// 背景：同一路视频铺满 + 高斯模糊，用来补两侧/上下的空白（只在竖屏视频时启用）
-    private let backdrop = AVPlayerLayer()
+    /// 补边用的模糊底：一张事先算好的静图，不是活体视频。
+    /// 以前这里是第二个 AVPlayerLayer 加 CIGaussianBlur(42)：竖屏素材每帧都要对
+    /// 一块比屏幕还大 12% 的区域重算一遍高斯模糊，是全 App 最贵的一笔开销，
+    /// 也是「自己做的手机竖屏视频最卡」的直接原因。
+    private let backdrop = CALayer()
     private let dim = CALayer()
     /// true = 铺满裁切；false = 完整显示 + 模糊补边
     private(set) var isFilled = true
+    /// 模糊底准备好了没有。没准备好就整块不显示，免得先闪一块纯色。
+    private var hasBackdrop = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -29,12 +35,10 @@ final class WallpaperView: NSView {
         root.backgroundColor = NSColor.black.cgColor
         root.masksToBounds = true
 
-        backdrop.videoGravity = .resizeAspectFill
-        backdrop.masksToBounds = false
+        // 普通图层放静图：零逐帧成本，靠 contentsGravity 铺满
+        backdrop.contentsGravity = .resizeAspectFill
+        backdrop.masksToBounds = true
         backdrop.isHidden = true
-        if let blur = CIFilter(name: "CIGaussianBlur", parameters: ["inputRadius": 42]) {
-            backdrop.filters = [blur]
-        }
         root.addSublayer(backdrop)
 
         dim.backgroundColor = NSColor.black.withAlphaComponent(0.42).cgColor
@@ -47,12 +51,24 @@ final class WallpaperView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    /// 视频原始尺寸已知后调用：比例基本一致的铺满（不做多余裁切），不一致的完整显示 + 模糊补边
+    /// 视频原始尺寸已知后调用（尺寸只影响 isFilled，图层位置由 layoutLayers 统一处理）
     func apply(videoSize: CGSize) {
-        // 背景层跟前景同一路视频，只是铺满 + 模糊
-        backdrop.player = playerLayer.player
         layoutLayers()
         _ = videoSize
+    }
+
+    /// 补上预先模糊好的静图（图层只吃 CGImage，转一道更稳）
+    func applyBackdrop(_ image: NSImage) {
+        var rect = NSRect(x: 0, y: 0, width: image.size.width, height: image.size.height)
+        guard let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return }
+        backdrop.contents = cg
+        hasBackdrop = true
+        layoutLayers()
+    }
+
+    /// 按这台机器的负载调整压暗程度（重负载压得深些，用对比度弥补没有动态模糊）
+    func applyDim(_ alpha: CGFloat) {
+        dim.backgroundColor = NSColor.black.withAlphaComponent(alpha).cgColor
     }
 
     /// true = 铺满（比例一致时用），false = 完整显示 + 模糊补边
@@ -62,7 +78,7 @@ final class WallpaperView: NSView {
     }
 
     var debugInfo: String {
-        "filled=\(isFilled) backHidden=\(backdrop.isHidden) back=\(backdrop.frame.size) front=\(playerLayer.frame.size)"
+        "filled=\(isFilled) backHidden=\(backdrop.isHidden) hasBack=\(hasBackdrop) front=\(playerLayer.frame.size)"
     }
 
     func layoutLayers() {
@@ -74,13 +90,12 @@ final class WallpaperView: NSView {
             backdrop.isHidden = true
             dim.isHidden = true
         } else {
-            // 模糊层外扩，避免边缘被模糊"啃"掉
-            let grow = max(b.width, b.height) * 0.12
-            backdrop.frame = b.insetBy(dx: -grow, dy: -grow)
+            // 静图本身就铺满，不用再外扩躲边缘
+            backdrop.frame = b
             dim.frame = b
             playerLayer.frame = b
-            dim.isHidden = false
-            backdrop.isHidden = false
+            dim.isHidden = !hasBackdrop
+            backdrop.isHidden = !hasBackdrop
         }
         CATransaction.commit()
     }
@@ -91,17 +106,112 @@ final class WallpaperView: NSView {
     }
 }
 
+// MARK: - 每台机器的每帧预算
+
+/// 不写死任何一台机器的参数。只看两个数字：屏幕物理像素、素材像素。
+/// 屏幕越大、素材越小（本来就在放大），补边模糊就越省力。
+/// 换 5K、外接屏、手机竖屏素材都不用改代码，这里自己算。
+struct RenderPlan {
+    enum Load: String { case light, normal, heavy }
+    let load: Load
+    /// 补边静图的模糊半径
+    let backdropRadius: Double
+    /// 补边压暗程度
+    let dimAlpha: CGFloat
+
+    static func make(screen: NSScreen, videoSize: CGSize, screenCount: Int) -> RenderPlan {
+        let scale = max(screen.backingScaleFactor, 1)
+        let devicePixels = screen.frame.width * scale * screen.frame.height * scale
+        let sourcePixels = max(videoSize.width * videoSize.height, 1)
+        let upscale = devicePixels / sourcePixels
+
+        var load: Load = .normal
+        if devicePixels > 14_000_000 || screenCount > 1 {
+            load = .heavy          // 5K / 6K / 多屏：每帧合成量大
+        } else if devicePixels < 5_000_000 {
+            load = .light
+        }
+        if upscale > 3 { load = .heavy }   // 小素材铺大屏，再叠一层模糊只是白烧算力
+
+        switch load {
+        case .light:  return RenderPlan(load: .light,  backdropRadius: 34, dimAlpha: 0.40)
+        case .normal: return RenderPlan(load: .normal, backdropRadius: 26, dimAlpha: 0.44)
+        case .heavy:  return RenderPlan(load: .heavy,  backdropRadius: 16, dimAlpha: 0.52)
+        }
+    }
+
+    var debugText: String { "load=\(load.rawValue) radius=\(backdropRadius) dim=\(dimAlpha)" }
+}
+
+// MARK: - 补边的模糊静图
+
+/// 取一帧 → 缩到 320px → 在小图上做高斯模糊 → 交给系统放大。
+/// 在小图上模糊和在全屏上模糊差着几百倍的像素数，而结果反正都要被拉成一片雾。
+/// 生成一次，之后播放期间零成本。
+enum BackdropBlur {
+    static func make(from video: URL, radius: Double,
+                     completion: @escaping (NSImage?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let asset = AVURLAsset(url: video)
+            let gen = AVAssetImageGenerator(asset: asset)
+            gen.appliesPreferredTrackTransform = true
+            gen.maximumSize = CGSize(width: 320, height: 320)
+            gen.requestedTimeToleranceBefore = CMTime(seconds: 3, preferredTimescale: 600)
+            gen.requestedTimeToleranceAfter = CMTime(seconds: 3, preferredTimescale: 600)
+            let dur = CMTimeGetSeconds(asset.duration)
+            let t = (dur.isFinite && dur > 1) ? dur * 0.33 : 0.5
+
+            guard let cg = try? gen.copyCGImage(at: CMTime(seconds: t, preferredTimescale: 600),
+                                                actualTime: nil) else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+
+            let ci = CIImage(cgImage: cg)
+            let blurred: CIImage
+            if let f = CIFilter(name: "CIGaussianBlur",
+                                parameters: [kCIInputImageKey: ci,
+                                             kCIInputRadiusKey: radius]),
+               let out = f.outputImage {
+                blurred = out
+            } else {
+                blurred = ci
+            }
+            // 按原 extent 裁掉模糊外溢出来的透明边
+            let ctx = CIContext(options: [.useSoftwareRenderer: false])
+            let rect = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
+            guard let out = ctx.createCGImage(blurred, from: rect) else {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            let img = NSImage(cgImage: out, size: NSSize(width: cg.width, height: cg.height))
+            DispatchQueue.main.async { completion(img) }
+        }
+    }
+}
+
 // MARK: - 壁纸素材来源
 
 enum Source {
     static let home = FileManager.default.homeDirectoryForCurrentUser
 
+    /// 数据根目录。`VW_SUPPORT_DIR` 可以整体挪走——云服务联调时用它把壁纸库、
+    /// 统计队列、install-id 全部关进临时目录，一点都碰不到真实用户在用的那份。
+    static let support: URL = {
+        if let p = ProcessInfo.processInfo.environment["VW_SUPPORT_DIR"] {
+            let u = URL(fileURLWithPath: (p as NSString).expandingTildeInPath, isDirectory: true)
+            try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+            return u
+        }
+        return home.appendingPathComponent("Library/Application Support/VideoWallpaper")
+    }()
+
     static var libraryDir: URL {
-        home.appendingPathComponent("Library/Application Support/VideoWallpaper/wallpapers")
+        support.appendingPathComponent("wallpapers")
     }
 
     static var singleFile: URL {
-        home.appendingPathComponent("Library/Application Support/VideoWallpaper/wallpaper.mp4")
+        support.appendingPathComponent("wallpaper.mp4")
     }
 
     static let videoExts: Set<String> = ["mp4", "mov", "m4v"]
@@ -192,27 +302,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private var windows: [WallpaperWindow] = []
+    /// 现在只有一路解码（多屏共用），留着数组是为了少改别处的遍历
     private var players: [AVQueuePlayer] = []
     private var loopers: [AVPlayerLooper] = []
+    /// 素材原始尺寸缓存：主线程只查这里，永远不读文件
+    private var sizeCache: [URL: CGSize] = [:]
+    private var sizeLoading: Set<URL> = []
+    /// App Nap 抑制令牌，必须全程持有
+    private var activityToken: NSObjectProtocol?
 
     /// 监听壁纸目录，外部（访达拖入、命令行拷贝）加进来的文件也能立刻出现在库里
     private var libWatcher: DispatchSourceFileSystemObject?
     private var libRescanWork: DispatchWorkItem?
 
     private var statusItem: NSStatusItem?
+    /// 桌面有没有被接管。**第一次装默认不接管**：下载完一打开就把别人的壁纸换掉太霸道，
+    /// 得他自己点一张才算数（点过之后才记住这个开关）。
     private var isShowing: Bool = {
         let d = UserDefaults.standard
-        return d.object(forKey: "wallpaperEnabled") == nil ? true : d.bool(forKey: "wallpaperEnabled")
+        return d.object(forKey: "wallpaperEnabled") == nil ? false : d.bool(forKey: "wallpaperEnabled")
     }()
+    /// 还没有做过任何选择：装好第一次启动
+    private var isFirstRun: Bool {
+        UserDefaults.standard.object(forKey: "wallpaperEnabled") == nil
+    }
     private var isPaused = false
 
     private var libraryWC: LibraryWindowController?
-    private var importQueue: [(url: URL, background: Bool)] = []
+    /// 这条导入是从哪儿来的：只用来算埋点（来源站名 + 耗时），不进任何日志文本
+    enum ImportOrigin {
+        case local(started: Date)
+        case link(provider: String, started: Date)
+
+        var startedAt: Date {
+            switch self {
+            case .local(let d), .link(_, let d): return d
+            }
+        }
+    }
+    private var importQueue: [(url: URL, background: Bool, origin: ImportOrigin)] = []
     private var isImporting = false
     private var isDownloading = false
     private var menuPanel: MenuPanelController?
     private var playTimer: Timer?
     private var lastTick = Date()
+    /// 有新版本时挂在图标的提示上（非阻断）
+    private var updateHint = ""
 
     private var launchAgentURL: URL {
         Source.home.appendingPathComponent("Library/LaunchAgents/com.zhanghangshuo.videowallpaper.plist")
@@ -234,6 +369,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // App Nap 会把「看不见的后台 App」的提交推迟到下一个合并唤醒点。
+        // 纯菜单栏 + 桌面层窗口 + 从不成为活跃 App，正好踩中这一条：
+        // 表现就是画面隔一两秒停住，然后一下跳到正确位置。必须全程持有，不能只在播放时拿。
+        // 注意用 AllowingIdleSystemSleep：要的是「别把我当闲置 App 降权」，
+        // 不是「别让 Mac 睡觉」—— 一个壁纸 App 拦住系统睡眠是不能接受的。
+        activityToken = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep, .automaticTerminationDisabled],
+            reason: "Dòng 正在渲染动态壁纸"
+        )
+
+        // 调试用：VW_APPEARANCE=dark|light 强制外观，方便截图比对两种模式下的底色
+        if let want = ProcessInfo.processInfo.environment["VW_APPEARANCE"] {
+            NSApp.appearance = NSAppearance(named: want == "dark" ? .darkAqua : .aqua)
+        }
+
+        // 起来就开始记帧健康：只记数字，一分钟落一行，成本近似为零
+        FrameHealth.shared.start()
         // 调试用：VW_PRESETS_TEST=/tmp/xxx 把包内默认壁纸导到指定目录看结果（验证用）
         if let testDir = ProcessInfo.processInfo.environment["VW_PRESETS_TEST"] {
             let dst = URL(fileURLWithPath: testDir)
@@ -253,6 +405,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let name = UserDefaults.standard.string(forKey: "currentWallpaperName"),
            let i = videos.firstIndex(where: { $0.lastPathComponent == name }) {
             index = i
+        }
+
+        // 预热素材尺寸：换壁纸时就不用再等读文件，主线程也不会被卡住
+        let warmUp = videos
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            for u in warmUp {
+                let asset = AVURLAsset(url: u)
+                var size = CGSize.zero
+                if let t = asset.tracks(withMediaType: .video).first {
+                    let s = t.naturalSize.applying(t.preferredTransform)
+                    size = CGSize(width: abs(s.width), height: abs(s.height))
+                }
+                DispatchQueue.main.async { self?.sizeCache[u] = size }
+            }
         }
 
         // 调试用：VW_DUMP_MENU=1 时把菜单结构打到标准输出后退出（无屏幕录制权限时验证菜单用）
@@ -280,14 +446,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 不弹任何欢迎窗：第一次启动也直接用，桌面该怎么显示就怎么显示。
         // 没有壁纸的话把库拉起来，那里能拖视频、贴链接。
         UserDefaults.standard.set(true, forKey: "onboarded")
+        // 只有他自己挑过（或开过）才去接管桌面；第一次装就静静待在菜单栏，
+        // 原来那张壁纸一点都不动。
         if isShowing {
             rebuild()
             pushLockScreen()
         }
+        let firstPick = isFirstRun
         // 壁纸库是空的就直接把窗口拉起来，让人知道下一步该干嘛
         // --library：升级后重新拉起时顺手把库打开
-        if videos.isEmpty || ProcessInfo.processInfo.arguments.contains("--library") {
+        // VW_NO_UI=1：无人值守的联调，别往屏幕上弹窗
+        let quietUI = ProcessInfo.processInfo.environment["VW_NO_UI"] != nil
+        if !quietUI, videos.isEmpty || ProcessInfo.processInfo.arguments.contains("--library") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.showLibrary() }
+        } else if !quietUI, firstPick {
+            // 第一次装：把小面板弹出来让他挑一张 —— 挑了才换，不挑就一直是他原来的壁纸
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                guard self.menuPanel?.isShown != true, let b = self.statusItem?.button else { return }
+                self.togglePanel(b)
+            }
         }
 
         // 调试用：VW_PANEL_SHOT=/tmp/panel.png 弹出面板并画成图片后退出
@@ -358,6 +535,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.showLibrary() }
         }
 
+        // 调试用：VW_SETTINGS_SHOT=/tmp/settings.png 把设置弹层渲染成图片后退出
+        if let path = ProcessInfo.processInfo.environment["VW_SETTINGS_SHOT"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if self.libraryWC == nil { self.showLibrary() }
+                self.libraryWC?.debugSnapshotSettings(to: path)
+                exit(0)
+            }
+        }
+
+        // 调试用：VW_IMPORT_TEST=/path/a.mp4 拿一个本地视频走一遍后台导入（不联网、不弹窗），
+        // 核对"只入库、不换壁纸"这条逻辑
+        if let p = ProcessInfo.processInfo.environment["VW_IMPORT_TEST"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                print("[import-test] before name=\(self.currentName) showing=\(self.isShowing) "
+                      + "windows=\(self.windows.count) videos=\(self.videos.count)")
+                self.importFiles([URL(fileURLWithPath: p)], background: true)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
+                print("[import-test] after name=\(self.currentName) showing=\(self.isShowing) "
+                      + "windows=\(self.windows.count) videos=\(self.videos.count)")
+                exit(0)
+            }
+        }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenChanged),
@@ -366,12 +567,111 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         // 匿名使用统计：只记「装了多少台、用了什么功能」，不含文件名和链接内容
+        Analytics.shared.wipeIfDisabled()
         Analytics.shared.start()
+
+        // 自动更新：启动 10 秒后查一次，此后每 6 小时一次（文档 §1.2）
+        Updater.shared.onState = { [weak self] st in self?.updateStateChanged(st) }
+        Updater.shared.onMandatory = { [weak self] r in self?.promptMandatoryUpdate(r) }
+        Updater.shared.start()
+    }
+
+    // MARK: 自动更新
+
+    private func updateStateChanged(_ state: Updater.State) {
+        // 有货就点亮菜单栏角标，并在壁纸库右上角那条胶囊里说进度
+        updateStatusItem()
+        switch state {
+        case .downloading(_, let p):
+            libraryWC?.setBusy(true, progress: p, text: "正在下载新版本（\(Int(p * 100))%）…")
+        case .ready(let r, _):
+            libraryWC?.setBusy(false, progress: 1,
+                               text: "\(r.displayName) 已下载，把 Dòng 拖进「应用程序」")
+        case .installing(let r):
+            libraryWC?.setBusy(true, progress: 1,
+                               text: "正在装 \(r.displayName)…装好会自动重开")
+        case .failed(let msg):
+            libraryWC?.setBusy(false, progress: 0, text: msg)
+        case .available(let r):
+            // 非强制：点角标 + 右键菜单里挂一条，另外弹一次窗口问要不要更新
+            updateHint = "新版本 \(r.displayName) 可用（右键菜单 → 立即更新）"
+            print("[update] available \(r.displayName) build=\(r.build)")
+            presentUpdatePrompt(r)
+            // 调试用：VW_UPDATE_DOWNLOAD=1 拿到版本就自动下，验证 SHA256 与重试
+            if ProcessInfo.processInfo.environment["VW_UPDATE_DOWNLOAD"] != nil {
+                Updater.shared.download(r)
+            }
+        default:
+            break
+        }
+    }
+
+    /// 普通更新：查出新版本后弹一次窗，问「现在装还是等下」
+    /// 同一个版本只问一次（存在 UserDefaults 里），免得每 15 分钟轮询都糊一脸；
+    /// 点过「稍后」的，隔 3 天再问一次，避免手滑点掉就再也收不到提醒。
+    private static let keyPromptedUpdate = "promptedUpdateVersion"
+    private static let keyPromptedAt = "promptedUpdateAt"
+    private func presentUpdatePrompt(_ r: UpdateRelease) {
+        if ProcessInfo.processInfo.environment["VW_NO_UI"] != nil { return }
+        // 用户已经手动点过「立即更新」在下载了，别再插一嘴
+        if case .downloading = Updater.shared.state { return }
+        if case .ready = Updater.shared.state { return }
+        if case .installing = Updater.shared.state { return }
+        let asked = UserDefaults.standard.string(forKey: Self.keyPromptedUpdate) ?? ""
+        if asked == r.version {
+            let at = UserDefaults.standard.double(forKey: Self.keyPromptedAt)
+            guard Date().timeIntervalSince1970 - at > 72 * 3600 else { return }
+        }
+        UserDefaults.standard.set(r.version, forKey: Self.keyPromptedUpdate)
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.keyPromptedAt)
+
+        let a = NSAlert()
+        a.messageText = "Dòng \(r.displayName) 可以用啦"
+        var body = r.notes.isEmpty ? "修了些问题、手感更顺。" : r.notes
+        if !r.sizeText.isEmpty {
+            body += "\n\n安装包 \(r.sizeText)，点「立即更新」会自动下载、装好并重开，不用自己拖。"
+        }
+        a.informativeText = body
+        a.alertStyle = .informational
+        a.addButton(withTitle: "立即更新")
+        a.addButton(withTitle: "稍后")
+        // 菜单栏小工具不是前台应用，不抬高窗口层级的话，弹窗可能藏在别的窗口后面，
+        // 用户就会以为「它根本没提醒我」。
+        a.window.level = .floating
+        a.window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        NSApp.activate(ignoringOtherApps: true)
+        a.window.makeKeyAndOrderFront(nil)
+        if ProcessInfo.processInfo.environment["VW_UPDATE_DEBUG"] != nil {
+            print("[update] prompt \(r.version) 已显示：visible=\(a.window.isVisible) "
+                  + "level=\(a.window.level.rawValue) key=\(a.window.isKeyWindow)")
+        }
+        let resp = a.runModal()
+        if resp == .alertFirstButtonReturn {
+            UserDefaults.standard.removeObject(forKey: Self.keyPromptedUpdate)
+            UserDefaults.standard.removeObject(forKey: Self.keyPromptedAt)
+            Updater.shared.download(r)
+        }
+    }
+
+    /// 强制更新：只给一个「立即更新」按钮，更新完才继续
+    private var mandatoryPrompted = Set<Int>()
+    private func promptMandatoryUpdate(_ r: UpdateRelease) {
+        guard !mandatoryPrompted.contains(r.build) else { return }
+        mandatoryPrompted.insert(r.build)
+        let a = NSAlert()
+        a.messageText = "需要更新到 \(r.displayName)"
+        a.informativeText = r.notes.isEmpty ? "这个版本包含必须装上的修复。" : r.notes
+        a.alertStyle = .warning
+        a.addButton(withTitle: "立即更新")
+        NSApp.activate(ignoringOtherApps: true)
+        a.runModal()
+        Updater.shared.download(r)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         tickPlayTime()
         for p in players { p.pause() }
+        if let t = activityToken { ProcessInfo.processInfo.endActivity(t) }
         Analytics.shared.finish()
     }
 
@@ -392,19 +692,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 视频原始显示尺寸（考虑旋转），读不到就返回 .zero
     private func naturalSize(of url: URL) -> CGSize {
-        let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .video).first else { return .zero }
-        let s = track.naturalSize.applying(track.preferredTransform)
-        return CGSize(width: abs(s.width), height: abs(s.height))
+        // 同步读 media 属性会在主线程卡几百毫秒（4K 素材尤其明显），主线程一卡，
+        // 视频图层就跟着停住再补跳 —— 这正是「卡卡的」的手感。所以这里只查缓存。
+        if let s = sizeCache[url] { return s }
+        if !sizeLoading.contains(url) {
+            sizeLoading.insert(url)
+            loadSize(of: url)
+        }
+        return .zero
+    }
+
+    /// 后台读尺寸写缓存；只有「竖屏判定会变」时才补一次 rebuild，避免来回重建
+    private func loadSize(of url: URL) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let asset = AVURLAsset(url: url)
+            var size = CGSize.zero
+            if let track = asset.tracks(withMediaType: .video).first {
+                let s = track.naturalSize.applying(track.preferredTransform)
+                size = CGSize(width: abs(s.width), height: abs(s.height))
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.sizeLoading.remove(url)
+                self.sizeCache[url] = size
+                let portrait = size.height > 0 && (size.width / size.height) < 0.98
+                if portrait, self.currentVideo == url, self.isShowing {
+                    self.rebuild()
+                }
+            }
+        }
     }
 
     private func rebuild() {
+        FrameHealth.shared.measure("rebuild") { rebuildBody() }
+    }
+
+    private func rebuildBody() {
         let wasPaused = isPaused
         teardown()
         guard isShowing, let url = currentVideo else { return }
 
         let desktopLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
         let vsize = naturalSize(of: url)
+
+        // 一份解码投给所有屏幕。以前每块屏各建一个 AVQueuePlayer，
+        // 外接显示器时同一条素材会被解码两遍 —— 那是接屏最容易崩的地方。
+        let player = AVQueuePlayer()
+        player.isMuted = true
+        player.automaticallyWaitsToMinimizeStalling = false
+        player.actionAtItemEnd = .advance
+
+        // 模板 item。以前这里给 item 设过 preferredMaximumResolution 想把解码尺寸
+        // 压到屏幕像素，实测在这条解码链路上不生效（交付尺寸仍是源尺寸），已撤掉。
+        let looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        loopers.append(looper)
+        players.append(player)
+
+        var portraitPlan: RenderPlan?
+        var firstPlan: RenderPlan?
 
         for screen in NSScreen.screens {
             // 外扩 24pt，抵消 WindowServer 对边缘的缩放，确保四边不留缝
@@ -439,26 +784,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let screenAR = screen.frame.width / max(screen.frame.height, 1)
             let videoAR = vsize.height > 0 ? vsize.width / vsize.height : screenAR
             let portrait = videoAR < 0.98 && screenAR > 1.2
+            let plan = RenderPlan.make(screen: screen, videoSize: vsize,
+                                       screenCount: NSScreen.screens.count)
+            if portrait { portraitPlan = plan }
+            if firstPlan == nil { firstPlan = plan }
+
             view.playerLayer.videoGravity = portrait ? .resizeAspect : .resizeAspectFill
+            view.applyDim(plan.dimAlpha)
             view.setFilled(!portrait)
 
             window.setFrame(frame, display: true)
             window.orderFrontRegardless()
             window.setFrame(frame, display: true)
 
-            let item = AVPlayerItem(url: url)
-            let player = AVQueuePlayer()
-            player.isMuted = true
-            player.automaticallyWaitsToMinimizeStalling = false
-            player.actionAtItemEnd = .advance
-            let looper = AVPlayerLooper(player: player, templateItem: item)
-            loopers.append(looper)
             view.playerLayer.player = player
             view.apply(videoSize: vsize)
-            player.play()
 
             windows.append(window)
-            players.append(player)
+        }
+
+        player.play()
+
+        // 挂上取证探针：记主线程卡顿和解码停顿，一分钟落一行日志
+        if let p = firstPlan {
+            FrameHealth.shared.bind(player: player, source: vsize, plan: p)
+        }
+
+        // 竖屏才需要补边：取一帧做一次模糊，之后播放期间零成本
+        if let plan = portraitPlan {
+            BackdropBlur.make(from: url, radius: plan.backdropRadius) { [weak self] img in
+                guard let self, let img, self.currentVideo == url else { return }
+                for w in self.windows {
+                    (w.contentView?.subviews.first as? WallpaperView)?.applyBackdrop(img)
+                }
+            }
         }
 
         // 换壁纸时保持原来的暂停状态
@@ -471,7 +830,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 for (i, w) in self.windows.enumerated() {
                     let host = w.contentView
                     let v = host?.subviews.first as? WallpaperView
-                    let ps = self.players[i].currentItem?.presentationSize ?? .zero
+                    let ps = self.players.first?.currentItem?.presentationSize ?? .zero
                     let vb = v?.bounds.size ?? .zero
                     let sc = v?.window?.backingScaleFactor ?? 0
                     let fillScale = (vb.width > 0 && ps.width > 0)
@@ -489,6 +848,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func teardown() {
+        FrameHealth.shared.unbind()
         for l in loopers { l.disableLooping() }
         for p in players { p.pause(); p.removeAllItems() }
         for w in windows { w.orderOut(nil); w.contentView = nil }
@@ -522,8 +882,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusItem() {
         guard let item = statusItem else { return }
         if let button = item.button {
-            button.alphaValue = isShowing ? 1.0 : 0.4
-            button.toolTip = isShowing ? "Dòng：\(currentName)" : "Dòng 已关闭（点此可重新开启）"
+            button.alphaValue = (isShowing || isFirstRun) ? 1.0 : 0.4
+            button.toolTip = isShowing
+                ? "Dòng：\(currentName)"
+                : (isFirstRun ? "Dòng：点一下挑一张动态壁纸"
+                              : "Dòng 已关闭（点此可重新开启）")
+            if !updateHint.isEmpty {
+                button.toolTip = (button.toolTip ?? "") + "\n" + updateHint
+            }
+            // 有新版本：图标右边点一颗小圆点（非阻断提示，用户可忽略）
+            if Updater.shared.pendingRelease != nil {
+                button.attributedTitle = NSAttributedString(
+                    string: " ●",
+                    attributes: [
+                        .font: NSFont.systemFont(ofSize: 7, weight: .bold),
+                        .foregroundColor: NSColor.systemOrange,
+                        .baselineOffset: 5,
+                    ])
+            } else if !button.title.isEmpty {
+                button.title = ""
+            }
             // 果冻会左右晃：平时慢晃，后台生成壁纸时晃得更起劲，关掉壁纸就停下
             MenuBarSway.shared.update(on: button, image: statusImage(), mood: swayMood)
         }
@@ -536,8 +914,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 菜单栏果冻这会儿该多活泼：干活时晃得凶一点
     private var swayMood: MenuBarSway.Mood {
-        guard isShowing else { return .off }
-        return (isDownloading || isImporting) ? .busy : .calm
+        if isDownloading || isImporting { return .busy }
+        // 还没挑过壁纸的时候也让它在动：告诉人「我在这儿，等我被点」
+        return (isShowing || isFirstRun) ? .calm : .off
     }
 
     /// 菜单里显示的名字：去掉扩展名
@@ -581,9 +960,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 刚被面板外的这一下点掉的，不要再弹回来
         if Date().timeIntervalSince(panel.lastDismiss) < 0.25 { return }
         panel.show(relativeTo: button, data: makePanelData())
+        Analytics.shared.track("panel_open")
+        // 用户主动打开面板是个自然的时机，顺手确认一下有没有新版本
+        Updater.shared.nudge()
     }
 
     private func makePanelData() -> PanelData {
+        FrameHealth.shared.measure("panelData") { buildPanelData() }
+    }
+
+    private func buildPanelData() -> PanelData {
         var d = PanelData()
         d.isEnabled = isShowing
         d.wallpapers = videos.map { displayName(for: $0) }
@@ -653,7 +1039,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 重新扫一遍目录。只在文件列表真的变了时刷新，避免打断正在播的画面
     private func rescanLibrary() {
         let keep = currentVideo?.lastPathComponent
-        let fresh = Source.load()
+        let fresh = FrameHealth.shared.measure("libScan") { Source.load() }
         let oldNames = videos.map { $0.lastPathComponent }
         let newNames = fresh.map { $0.lastPathComponent }
         guard newNames != oldNames else { return }
@@ -672,18 +1058,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let delta = now.timeIntervalSince(lastTick)
         lastTick = now
         guard isShowing, !isPaused, !windows.isEmpty, delta > 0 else { return }
-        PlayTime.add(min(delta, 60))
+        FrameHealth.shared.measure("playTime") { PlayTime.add(min(delta, 60)) }
     }
 
-    private func selectWallpaper(index i: Int) {
+    private func selectWallpaper(index i: Int, via: String = "menu") {
         guard i >= 0, i < videos.count else { return }
+        let switched = i != index
         // 切完不收起面板：频繁对比不同壁纸时，不用每次都回去点一遍图标
         if i == index {
-            if !isShowing { setEnabled(true) }
+            if !isShowing { setEnabled(true, via: via) }
         } else {
             index = i
             if !isShowing {
-                setEnabled(true)
+                setEnabled(true, via: via)
             } else {
                 rebuild()
                 updateStatusItem()
@@ -695,7 +1082,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if menuPanel?.isShown == true {
             menuPanel?.refresh(makePanelData())
         }
-        Analytics.shared.track("wallpaper_switch", ["i": i, "n": videos.count])
+        // 埋点：切到哪一张不重要，重要的是从哪儿切的、库里一共几张
+        if switched {
+            Analytics.shared.track("wallpaper_switch", ["via": via, "lib_n": videos.count])
+        }
     }
 
     // MARK: 系统菜单（右键兜底）
@@ -710,11 +1100,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        // 有新版本就把它放第一条：非阻断的提示，不打扰但看得见
+        if let r = Updater.shared.pendingRelease {
+            let item = NSMenuItem(title: "新版本 \(r.displayName) 可用…",
+                                  action: #selector(menuUpdateNow), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+            menu.addItem(.separator())
+        }
+        let check = NSMenuItem(title: "检查更新…", action: #selector(menuCheckUpdate),
+                               keyEquivalent: "")
+        check.target = self
+        menu.addItem(check)
+        menu.addItem(.separator())
+        // 反馈「卡」的时候，让人一键把数字拿走，不用教任何人去翻日志
+        let diag = NSMenuItem(title: "复制诊断信息（反馈卡顿时用）",
+                              action: #selector(menuCopyDiag), keyEquivalent: "")
+        diag.target = self
+        menu.addItem(diag)
+        menu.addItem(.separator())
         // 右键只留一个出口：切壁纸、壁纸库都在左键面板里了
         let quit = NSMenuItem(title: "退出 Dòng", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         return menu
+    }
+
+    @objc private func menuCheckUpdate() {
+        Updater.shared.check(manual: true)
+    }
+
+    /// 把这一段时间的帧健康数字放到剪贴板：主线程卡顿次数/最久、解码停顿次数、现场参数
+    @objc private func menuCopyDiag() {
+        FrameHealth.shared.copySummary()
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = "诊断信息已复制"
+        a.informativeText = "把剪贴板里的内容发给我们即可。\n"
+            + "里面只有数字：屏幕与素材尺寸、卡顿次数与时长，不含任何壁纸文件名或路径。"
+        a.addButton(withTitle: "好")
+        a.addButton(withTitle: "显示日志")
+        if a.runModal() == .alertSecondButtonReturn {
+            FrameHealth.shared.revealLog()
+        }
+    }
+
+    @objc private func menuUpdateNow() {
+        guard let r = Updater.shared.pendingRelease else { return }
+        Updater.shared.download(r)
     }
 
     // MARK: 动作
@@ -725,14 +1158,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 谁把它叫出来的，日志里留一笔：粘链接生成壁纸不该出现在这里
         print("[library] showLibrary")
         if libraryWC == nil {
-            libraryWC = LibraryWindowController(delegate: self)
+            libraryWC = FrameHealth.shared.measure("libBuild") {
+                LibraryWindowController(delegate: self)
+            }
         }
         // 每次开窗都按磁盘实际内容重扫，别拿启动时的旧清单给人看
-        rescanLibrary()
-        libraryWC?.reload()
+        FrameHealth.shared.measure("libRescan") { rescanLibrary() }
+        FrameHealth.shared.measure("libReload") { libraryWC?.reload() }
         NSApp.activate(ignoringOtherApps: true)
         libraryWC?.showWindow(nil)
         libraryWC?.window?.makeKeyAndOrderFront(nil)
+        // 打开壁纸库也算「用户打开」，顺手确认一下有没有新版本（1 分钟内不重复）
+        Updater.shared.nudge()
     }
 
     /// 开机自启开关（设置窗口调用）
@@ -801,12 +1238,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///   进度写回面板那条链接框；壁纸库窗口只在用户自己点的时候才开。
     func importLink(_ link: String, background: Bool = false) {
         guard !isDownloading else { NSSound.beep(); return }
+        // 埋点只记站名和耗时，链接原文不上报
+        let origin = ImportOrigin.link(provider: Analytics.provider(for: link), started: Date())
         guard let tool = Downloader.ytdlpURL else {
             if background {
                 menuPanel?.showImportDone("这个版本没带视频解析组件（yt-dlp）", isError: true)
             } else {
                 showError("这个版本没带视频解析组件（yt-dlp），只能手动把下载好的视频拖进来。")
             }
+            trackImport(origin, ok: false, error: NSError(domain: "Transcoder", code: 2))
             return
         }
         guard let ffmpeg = Transcoder.ffmpegURL else {
@@ -815,6 +1255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 showError("找不到视频处理组件（ffmpeg）。")
             }
+            trackImport(origin, ok: false, error: NSError(domain: "Transcoder", code: 2))
             return
         }
 
@@ -857,7 +1298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.isDownloading = false
                     if !background { self.libraryWC?.setBusy(false, progress: 0, text: "") }
                     // 剩下的交给同一条优化流水线，同样不许弹窗
-                    self.importFiles([file], background: background)
+                    self.enqueueImport(file, background: background, origin: origin)
                     self.updateStatusItem()
                 }
             } catch {
@@ -865,6 +1306,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 DispatchQueue.main.async {
                     self.isDownloading = false
                     self.updateStatusItem()
+                    self.trackImport(origin, ok: false, error: error)
                     if !background { self.libraryWC?.setBusy(false, progress: 0, text: "") }
                     let text = "没下载下来：\(error.localizedDescription)"
                     if background, self.menuPanel?.isShown == true {
@@ -891,10 +1333,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func importFiles(_ urls: [URL], background: Bool = false) {
         guard !urls.isEmpty else { return }
-        importQueue += urls.map { (url: $0, background: background) }
+        let now = Date()
+        for u in urls {
+            importQueue.append((url: u, background: background, origin: .local(started: now)))
+        }
         // 后台（面板里贴链接）进来的不翻窗，用户点了壁纸库才翻
         if !background { showLibrary() }
         pumpImport()
+    }
+
+    /// 已经拿到本地文件的（链接下载完成）也走同一条队列，只是来源不同
+    private func enqueueImport(_ url: URL, background: Bool, origin: ImportOrigin) {
+        importQueue.append((url: url, background: background, origin: origin))
+        if !background { showLibrary() }
+        pumpImport()
+    }
+
+    /// 导入结果埋点：ok / ms / err / 分档，**不含文件名与链接**
+    private func trackImport(_ origin: ImportOrigin, ok: Bool, error: Error? = nil, out: URL? = nil) {
+        let ms = max(0, Int(Date().timeIntervalSince(origin.startedAt) * 1000))
+        switch origin {
+        case .link(let provider, _):
+            var p: [String: Any] = ["provider": provider, "ok": ok, "ms": ms]
+            if !ok {
+                p["err"] = Analytics.errCode(error
+                    ?? NSError(domain: "Transcoder", code: 0))
+            }
+            Analytics.shared.track("import_link", p)
+        case .local:
+            var p: [String: Any] = ["ok": ok, "ms": ms]
+            if !ok {
+                p["err"] = Analytics.errCode(error
+                    ?? NSError(domain: "Transcoder", code: 0))
+            } else if let out {
+                let dur = GalleryThumb.info(for: out).duration
+                let size = (try? out.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                p["dur_bucket"] = Analytics.durBucket(dur)
+                p["size_bucket"] = Analytics.sizeBucket(size)
+            }
+            Analytics.shared.track("import_local", p)
+        }
     }
 
     private func pumpImport() {
@@ -912,6 +1390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let src = item.url
         // 这一条是不是后台来的：是就不许开窗，进度只写面板
         let quiet = item.background
+        let origin = item.origin
         let tc = Transcoder(ffmpeg: ffmpeg)
         let label = src.lastPathComponent
         // 进度只说给"正在看的那一扇"：面板开着就说面板，否则说库窗口那条胶囊。
@@ -941,25 +1420,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     if src.path.contains("/vw-dl-") {
                         try? FileManager.default.removeItem(at: src.deletingLastPathComponent())
                     }
+                    // 下载归下载，换壁纸归换壁纸：新素材只入库，绝不替用户把桌面换掉，
+                    // 他点了缩略图（面板）或右键「设为壁纸」（库）才换。
+                    // 唯一例外：库里原本一张都没有，这时候不换就是一片黑。
+                    let playing = self.currentVideo?.lastPathComponent
                     self.videos = Source.load()
-                    if let i = self.videos.firstIndex(where: { $0.lastPathComponent == out.lastPathComponent }) {
+                    if let playing,
+                       let i = self.videos.firstIndex(where: { $0.lastPathComponent == playing }) {
                         self.index = i
-                        // 新加进来的直接就是当前壁纸；之前关着的话顺手打开
+                    } else if self.index >= self.videos.count {
+                        self.index = 0
+                    }
+                    let newIndex = self.videos.firstIndex {
+                        $0.lastPathComponent == out.lastPathComponent
+                    }
+                    var applied = false
+                    if playing == nil, let i = newIndex {
+                        self.index = i
                         if !self.isShowing {
-                            self.setEnabled(true)
+                            self.setEnabled(true, via: "onboarding")
                         } else {
                             self.rebuild()
                             self.pushLockScreen()
                         }
+                        applied = true
                     }
                     self.updateStatusItem()
                     self.libraryWC?.reload()
+                    // 导入成功埋点：只有成败、耗时、档位，没有文件名
+                    self.trackImport(origin, ok: true, out: out)
+                    // 面板开着：把刚存好的那张滚进可见范围，省得在一排缩略图里找
+                    if self.menuPanel?.isShown == true {
+                        if let i = newIndex, !applied {
+                            self.menuPanel?.revealThumb(i, data: self.makePanelData())
+                        } else {
+                            self.menuPanel?.refresh(self.makePanelData())
+                        }
+                    }
                     if quiet {
                         // 后台生成：工作已经做完了，只在面板那一条框里报个结论
                         let name = out.deletingPathExtension().lastPathComponent
-                        self.menuPanel?.showImportDone("已换成「\(name)」")
+                        print("[import] saved=\(out.lastPathComponent) applied=\(applied) "
+                              + "playing=\(playing ?? "nil") index=\(self.index) videos=\(self.videos.count)")
+                        self.menuPanel?.showImportDone(
+                            applied ? "已换成「\(name)」" : "已存好「\(name)」，点一下才换")
                     } else {
-                        self.libraryWC?.setBusy(false, progress: 1, text: "已设为壁纸：\(out.lastPathComponent)")
+                        let note = applied
+                            ? "已设为壁纸：\(out.lastPathComponent)"
+                            : "已加入壁纸库：\(out.lastPathComponent)（右键「设为壁纸」才换）"
+                        self.libraryWC?.setBusy(false, progress: 1, text: note)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
                             guard let self, !self.isImporting else { return }
                             self.libraryWC?.setBusy(false, progress: 0, text: "")
@@ -970,6 +1479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 DispatchQueue.main.async {
                     self.isImporting = false
+                    self.trackImport(origin, ok: false, error: error)
                     let text = "「\(label)」处理失败：\(error.localizedDescription)"
                     if quiet {
                         self.menuPanel?.showImportDone(text, isError: true)
@@ -984,11 +1494,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleShow() {
-        setEnabled(!isShowing)
+        setEnabled(!isShowing, via: "menu")
     }
 
-    /// 统一的启用 / 关闭入口：首次向导、设置窗口、切换壁纸都走这里
-    private func setEnabled(_ on: Bool) {
+    /// 统一的启用 / 关闭入口：面板、设置窗口、切换壁纸都走这里
+    /// - Parameter via: 埋点口径，只允许 onboarding / menu / settings
+    private func setEnabled(_ on: Bool, via: String = "menu") {
         let changed = isShowing != on
         isShowing = on
         UserDefaults.standard.set(on, forKey: "wallpaperEnabled")
@@ -1001,7 +1512,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         updateStatusItem()
         libraryWC?.reload()
-        if changed { Analytics.shared.track("toggle_wallpaper", ["on": on]) }
+        if changed {
+            Analytics.shared.track(on ? "wallpaper_enable" : "wallpaper_disable", ["via": via])
+        }
     }
 
     /// 锁屏跟随开关（设置窗口调用）
@@ -1010,6 +1523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(on, forKey: "syncLockScreen")
         if on { pushLockScreen() }
         libraryWC?.reload()
+        Analytics.shared.track("lock_screen_toggle", ["on": on])
     }
 
     @objc private func openLibrary() {
@@ -1054,8 +1568,13 @@ extension AppDelegate: WallpaperLibraryDelegate {
 
     func libraryApply(index i: Int) {
         guard i >= 0, i < videos.count else { return }
+        let switched = i != index
         index = i
-        setEnabled(true)
+        setEnabled(true, via: "settings")
+        // 库里点「设为壁纸」：via=library，跟面板里点缩略图区分开
+        if switched {
+            Analytics.shared.track("wallpaper_switch", ["via": "library", "lib_n": videos.count])
+        }
     }
 
     func libraryDelete(index i: Int) {
@@ -1066,7 +1585,7 @@ extension AppDelegate: WallpaperLibraryDelegate {
         if index > i { index -= 1 }
         if videos.isEmpty {
             index = 0
-            setEnabled(false)
+            setEnabled(false, via: "settings")
         } else {
             index = min(index, videos.count - 1)
             if isShowing {
@@ -1076,6 +1595,8 @@ extension AppDelegate: WallpaperLibraryDelegate {
         }
         updateStatusItem()
         libraryWC?.reload()
+        // 埋点只记删完还剩几张
+        Analytics.shared.track("wallpaper_delete", ["lib_n": videos.count])
     }
 
     func libraryAdd(urls: [URL]) { importFiles(urls) }
@@ -1087,7 +1608,7 @@ extension AppDelegate: WallpaperLibraryDelegate {
     func libraryRevealFolder() { openLibrary() }
 
     func libraryIsEnabled() -> Bool { isShowing }
-    func librarySetEnabled(_ on: Bool) { setEnabled(on) }
+    func librarySetEnabled(_ on: Bool) { setEnabled(on, via: "settings") }
     func libraryIsLockSync() -> Bool { syncLockScreen }
     func librarySetLockSync(_ on: Bool) { setLockSync(on) }
     func libraryIsAutostart() -> Bool { isAutostartEnabled }
@@ -1302,6 +1823,9 @@ func installEditMenu() {
 }
 
 let app = NSApplication.shared
+// stdout 重定向到文件时默认是块缓冲，被 kill 掉的联调实例会丢掉全部日志。
+// 改成按行刷新，日志才追得上进程。
+setvbuf(stdout, nil, _IOLBF, 0)
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)

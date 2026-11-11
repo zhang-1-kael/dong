@@ -9,7 +9,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 
 echo "==> 编译 Swift"
 swiftc -O -o "$APP/Contents/MacOS/VideoWallpaper" \
-  main.swift Downloader.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift \
+  main.swift Downloader.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift \
   -framework Cocoa -framework AVFoundation
 
 echo "==> 组装 App Bundle"
@@ -72,6 +72,16 @@ for f in BrandMark.png BrandMarkBadge.png BrandMarkMenu.png BrandMarkTemplate.pn
     cp "$f" "$APP/Contents/Resources/$f"
   fi
 done
+
+# 摇摆动画帧：图标不再是「整张图转角度」，而是逐帧重绘的真果冻形变
+# 由 ../jelly-anim/export_icons.py 生成，30 帧 = 一个完整来回
+if [ -d icons ] && [ -n "$(ls -A icons 2>/dev/null)" ]; then
+  N=$(ls -1 icons/*.png(N) | wc -l | tr -d ' ')
+  cp icons/*.png(N) "$APP/Contents/Resources/"
+  echo "==> 摇摆图标帧 $N 张"
+else
+  echo "!! icons/ 是空的：菜单栏和徽章会退回静态图标"
+fi
 
 # 本地开发用 ad-hoc 签名：只能自己这台机器跑。
 # 要分发给别人（过 Gatekeeper）请勿改这里，改用：

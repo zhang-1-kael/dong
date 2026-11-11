@@ -6,8 +6,19 @@ cd "$(dirname "$0")"
 ./build.sh
 
 VER=$(plutil -extract CFBundleShortVersionString raw Info.plist)
+BUILD=$(plutil -extract CFBundleVersion raw Info.plist)
+API=$(plutil -extract ApiBaseURL raw Info.plist 2>/dev/null || echo "")
 DIST="dist"
 STAGE="$DIST/stage"
+
+# 血泪教训：3.21 那个包 API 地址是空的，装上去的人再也不会检查更新，整条链路直接断掉。
+# 所以这里硬性拦住：没填地址就不许打包。
+if [ -z "$API" ] || [ "$API" = " " ]; then
+  echo "!! Info.plist 的 ApiBaseURL 是空的：这样的包发出去，用户装上就再也收不到更新了" >&2
+  echo "   先填上正式地址，例如： https://dongisgood.coze.site" >&2
+  exit 1
+fi
+echo "==> 打包 Dòng $VER ($BUILD)，更新服务器 $API"
 
 rm -rf "$STAGE" "$DIST/Dòng-$VER.dmg"
 mkdir -p "$STAGE"
@@ -40,4 +51,11 @@ fi
 
 rm -rf "$STAGE"
 ls -lh "$DIST/Dòng-$VER.dmg"
+echo
+echo "==> 上传到服务器时，后台要填这几个值："
+echo "    version   $VER"
+echo "    build     $BUILD"
+echo "    file_size $(stat -f%z "$DIST/Dòng-$VER.dmg")"
+echo "    sha256    $(shasum -a 256 "$DIST/Dòng-$VER.dmg" | cut -d' ' -f1)"
+echo "    download  https://<你的域名>/api/download?v=$VER&channel=stable"
 echo "==> 完成"
