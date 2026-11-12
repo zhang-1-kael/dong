@@ -2256,6 +2256,22 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(caption("拖完即走，设置会记住"))
         stack.addArrangedSubview(caption("实时生效 · 当前这张壁纸", tint: .controlAccentColor))
 
+        // 微调对象：库里不止一张时可以挑一张来调。选哪张就立刻切到哪张当壁纸——
+        // 实时效果（速度 / 循环 / 明暗）必须播出来才看得见，顺带让「重新生成」也对准它。
+        // 只有一张时不显示选择器，面板跟以前一模一样。
+        let vids = delegate?.libraryVideos() ?? []
+        let current = delegate?.libraryCurrentIndex() ?? 0
+        if vids.count > 1 {
+            let titles = vids.enumerated().map { i, url -> String in
+                let base = url.deletingPathExtension().lastPathComponent
+                let short = base.count > 22 ? String(base.prefix(21)) + "…" : base
+                return i == current ? "使用中 · " + short : short
+            }
+            stack.addArrangedSubview(selectRow("微调对象", items: titles, selected: current,
+                                               action: #selector(tuneTargetChanged(_:))))
+            stack.addArrangedSubview(caption("换选会立刻把桌面切成那张，边看边调"))
+        }
+
         let speed = sliderRow("播放速度", value: String(format: "%.2f×", Tuning.speed),
                               min: 0.5, max: 2, current: Tuning.speed,
                               action: #selector(tuneSpeedChanged(_:)))
@@ -2377,6 +2393,16 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     @objc private func tuneResetTapped() {
         Tuning.reset()
         tuningPop?.contentViewController = makeTuningController()
+    }
+    /// 微调对象换选：选哪张就切到哪张当壁纸。`libraryApply` 内部会 rebuild + 重放，
+    /// 实时微调（速度 / 循环 / 明暗）跟着就作用到新那张上，重新生成也对准它。
+    @objc private func tuneTargetChanged(_ sender: NSPopUpButton) {
+        guard let d = delegate else { return }
+        let i = sender.indexOfSelectedItem
+        guard i >= 0, i < d.libraryVideos().count else { return }
+        if i != d.libraryCurrentIndex() {
+            d.libraryApply(index: i)
+        }
     }
 
     private func makeSettingsController() -> NSViewController {
