@@ -18,7 +18,7 @@
 > Einen Video-Link einfügen oder ein lokales Video reinziehen: Download, Zuschnitt und nahtlose Schleife laufen automatisch und landen auf dem Desktop.
 
 <h6 align="center">
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -208,7 +208,11 @@ sonst melden deine Nutzer an den Server des Autors. Dieser Schritt ist nicht fei
 
 ## Lizenz & Assets
 
-Code und Dokumentation stehen unter **MIT**, siehe [LICENSE](LICENSE).
+Code und Dokumentation stehen unter **GPL-3.0** — siehe [LICENSE](LICENSE). Wer eine geänderte Binärdatei weitergibt, muss den vollständigen zugehörigen Quellcode unter derselben Lizenz bereitstellen.
+
+**Doppellizenzierung:** Für den Einsatz von Dòng in einem quellgeschlossenen kommerziellen Produkt ist eine separate kommerzielle Lizenz erhältlich — siehe [COMMERCIAL.md](COMMERCIAL.md) oder eröffne ein Issue, um den Autor zu kontaktieren.
+
+> **Hinweis zu älteren Versionen:** v3.31 und früher wurden unter der MIT-Lizenz veröffentlicht. Diese Rechte können nicht widerrufen werden; GPL-3.0 gilt nur für spätere Versionen.
 
 **Nicht von der Lizenz abgedeckt:**
 

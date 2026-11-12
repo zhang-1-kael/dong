@@ -18,7 +18,7 @@
 > Pega un enlace de vídeo o arrastra un archivo local: la app descarga, recorta y une todo en un bucle sin cortes, extendido sobre tu escritorio.
 
 <h6 align="center">
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -208,7 +208,11 @@ si no, tus usuarios enviarán sus datos al servidor del autor. No es algo elegan
 
 ## Licencia y recursos
 
-El código y la documentación están bajo licencia **MIT** — ver [LICENSE](LICENSE).
+El código y la documentación están bajo **GPL-3.0** — ver [LICENSE](LICENSE). Si distribuyes un binario modificado, debes ofrecer el código fuente completo correspondiente bajo la misma licencia.
+
+**Doble licencia:** Si quieres usar Dòng en un producto comercial de código cerrado, hay disponible una licencia comercial independiente — ver [COMMERCIAL.md](COMMERCIAL.md) o abre un issue para contactar al autor.
+
+> **Nota histórica:** v3.31 y anteriores se publicaron bajo la licencia MIT. Esos permisos no pueden revocarse; GPL-3.0 se aplica solo a versiones posteriores.
 
 **No cubierto por la licencia:**
 

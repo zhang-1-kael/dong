@@ -18,7 +18,7 @@
 > Вставьте ссылку на видео или перетащите локальный файл: скачивание, обрезка и склейка в бесшовную петлю происходят автоматически и оказываются прямо на рабочем столе.
 
 <h6 align="center">
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -208,7 +208,11 @@ VideoWallpaper --link "https://…"         # скачивание по ссыл
 
 ## Лицензия и материалы
 
-Код и документация — под лицензией **MIT**, см. [LICENSE](LICENSE).
+Код и документация распространяются по лицензии **GPL-3.0** — см. [LICENSE](LICENSE). При распространении изменённого бинарного файла необходимо предоставить полный соответствующий исходный код на тех же условиях.
+
+**Двойное лицензирование:** Для использования Dòng в закрытом коммерческом продукте доступна отдельная коммерческая лицензия — см. [COMMERCIAL.md](COMMERCIAL.md) или откройте issue для связи с автором.
+
+> **Историческая справка:** версии v3.31 и ранее были выпущены под лицензией MIT. Эти права не могут быть отозваны; GPL-3.0 применяется только к более поздним версиям.
 
 **Что лицензией не покрыто:**
 

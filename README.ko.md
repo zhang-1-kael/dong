@@ -18,7 +18,7 @@
 > 영상 링크를 붙여넣거나 로컬 영상을 끌어다 놓으면 다운로드하고, 자르고, 이어 붙여 끊김 없는 루프를 만든 뒤 데스크톱에 깔아 줍니다.
 
 <h6 align="center">
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -208,7 +208,11 @@ CPU 아키텍처, 언어, 이벤트 이름.
 
 ## 라이선스 및 자료
 
-코드와 문서는 **MIT** 라이선스입니다 — [LICENSE](LICENSE) 참고.
+코드와 문서는 **GPL-3.0** 라이선스를 따릅니다 — [LICENSE](LICENSE) 참고. 수정한 바이너리를 배포할 때는 완전한 대응 소스 코드를 동일한 라이선스로 제공해야 합니다.
+
+**이중 라이선스:** Dòng을 클로즈드 소스 상용 제품에 사용하려면 별도의 상용 라이선스가 필요합니다 — [COMMERCIAL.md](COMMERCIAL.md)를 보거나 이슈로 작성자에게 문의하세요.
+
+> **이전 버전 안내:** v3.31 이하는 MIT 라이선스로 공개되었으며 해당 허가는 철회할 수 없습니다. GPL-3.0은 그 이후 버전에만 적용됩니다.
 
 **라이선스에 포함되지 않는 것:**
 

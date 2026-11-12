@@ -18,7 +18,7 @@
 > 贴一条视频链接，或拖进一个本地视频，它会自动下载、裁剪、拼接成无缝循环，铺在你的桌面上。
 
 <h6 align="center">
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&labelColor=23272A&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -204,7 +204,11 @@ CPU 架构、语言、事件名。
 
 ## 许可与素材
 
-代码与文档以 **MIT** 授权，见 [LICENSE](LICENSE)。
+代码与文档以 **GPL-3.0** 授权，见 [LICENSE](LICENSE)。分发修改后的二进制时，必须以同一许可提供完整对应源码。
+
+**双许可：** 若需将 Dòng 用于闭源商业产品，可另行申请商业授权 —— 见 [COMMERCIAL.md](COMMERCIAL.md)，或开 issue 联系作者。
+
+> **历史版本说明：** v3.31 及之前以 MIT 授权发布，该授权不可追溯撤销；GPL-3.0 仅适用于其后的版本。
 
 **不包含在授权里的部分：**
 

@@ -18,7 +18,7 @@
 > Paste a video link, or drag in a local video: it downloads, trims, and stitches it into a seamless loop, spread across your desktop.
 
 <h6 align="center">
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-5865F2?style=for-the-badge&labelColor=23272A" alt="MIT License"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -204,7 +204,11 @@ otherwise your users will report to the author's server. That step isn't polite,
 
 ## License & Assets
 
-Code and documentation are licensed under **MIT** — see [LICENSE](LICENSE).
+Code and documentation are licensed under **GPL-3.0** — see [LICENSE](LICENSE). If you distribute a modified binary, you must make the complete corresponding source available under the same license.
+
+**Dual licensing:** To use Dòng in a closed-source commercial product, a separate commercial license is available — see [COMMERCIAL.md](COMMERCIAL.md), or open an issue to contact the author.
+
+> **Historical note:** v3.31 and earlier were released under the MIT License. Those grants cannot be revoked; GPL-3.0 applies to later versions only.
 
 **Not covered by the license:**
 
