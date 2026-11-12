@@ -4,6 +4,7 @@
   <p>Trasforma qualsiasi video in una scrivania viva.<br>
   <a href="#features"><strong>Scopri Dòng »</strong></a><br><br>
   <a href="#installation">Scarica per macOS</a> · <a href="https://dongisgood.coze.site/en">Sito ufficiale ↗</a><br>
+  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Lascia installare a un'IA (il modo più semplice) »</strong></a><br>
   <i>~ Versione 3.31 · macOS 13 e successivi · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
@@ -18,6 +19,7 @@
 > Incolla un link video o trascina un file locale: l'app scarica, ritaglia e unisce il tutto in un loop senza soluzione di continuità, disteso sulla tua scrivania.
 
 <h6 align="center">
+  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
@@ -27,6 +29,36 @@
 </h6>
 
 <a id="features" name="features"></a>
+
+---
+
+## 🤖 Non vuoi installare a mano? Incolla questo a un'IA
+
+> [!IMPORTANT]
+> **Il modo più semplice per installare Dòng: un solo messaggio a un'IA.** Copia il blocco qui sotto in un assistente che può eseguire comandi sul tuo Mac (WorkBuddy, Claude Code, Cursor, Codex, ...).
+>
+> Scarica il DMG ufficiale, verifica lo SHA256, installa l'app in Applicazioni e completa la conferma una tantum di macOS al primo avvio — poi basta un doppio clic.
+>
+> Nessun terminale da aprire, nessuna impostazione di sistema da cercare.
+
+**① Copia tutto questo blocco**
+
+```text
+Installa Dòng, un'app di sfondo animato per macOS, su questo Mac.
+
+Repository ufficiale: https://github.com/zhang-1-kael/dong
+Sito ufficiale: https://dongisgood.coze.site/en
+Manuale di installazione per IA: AI_INSTALL.md nel repository; script: install.sh
+
+Leggi prima il manuale e lo script, poi segui il manuale: scarica dall'endpoint stabile ufficiale, verifica lo SHA256 dell'API ufficiale, installa in /Applications, completa la conferma una tantum di macOS al primo avvio, avvia l'app e riportami risultato e istruzioni d'uso.
+Usa solo i domini ufficiali indicati; niente sudo, non eliminare o sovrascrivere i miei file, non modificare le impostazioni di sicurezza di sistema. Se non hai accesso alla terminale, dammi solo i comandi più brevi e non fingere di aver installato qualcosa.
+```
+
+**② Incollalo nell'IA e attendi. La scelta che l'app propone al primo avvio («attivare lo sfondo animato?») la faccio io.**
+
+📖 Approfondimenti: [manuale completo per le IA](AI_INSTALL.md) · [prompt bilingui](AI_INSTALL_PROMPT.md) · [script di installazione](install.sh) · [download manuale](https://dongisgood.coze.site/en)
+
+---
 
 ## Funzionalità
 
@@ -76,10 +108,14 @@ Cattura un frame e impostalo come sfondo di sistema: in movimento quando sblocca
 
 #### Scaricare Dòng
 
-Prendi l'ultima `.dmg` dalla pagina [Releases](https://github.com/zhang-1-kael/dong/releases), aprila e trascina Dòng in «Applicazioni».
+Scarica l’ultima `.dmg` dal [sito ufficiale](https://dongisgood.coze.site/en), aprila e trascina Dòng in «Applicazioni».
+
+La build è firmata ad-hoc e non è notarizzata. Se macOS dice che è danneggiata, esegui una volta `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` e riaprila.
 
 > [!TIP]
-> La prima release ufficiale è in preparazione. Finché non arriva, puoi compilartela da sorgente con i passi qui sotto — bastano i command line tools di Xcode, un minuto di installazione.
+> **Lascia fare a un’IA.** Copia il prompt di [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) in un qualsiasi assistente AI: scarica, verifica e installa Dòng con un solo comando.
+>
+> Preferisci compilarla tu? Segui i passi qui sotto — bastano i command line tools di Xcode.
 
 #### Compilare dai sorgenti
 

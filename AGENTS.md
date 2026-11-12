@@ -1,0 +1,34 @@
+# AGENTS.md
+
+Dòng — a macOS live wallpaper app written in pure Swift + AppKit. It is a
+menu-bar (`LSUIElement`) app: no Dock icon, no window on launch.
+Repo: <https://github.com/zhang-1-kael/dong> · Site: <https://dongisgood.coze.site/en>
+
+## If the user asks to install / download / set up Dòng
+
+**Read `AI_INSTALL.md` first and follow it.** Short version:
+
+- Official stable DMG endpoint: `https://dongisgood.coze.site/api/download?channel=stable`
+  (release metadata / SHA256: `/api/update/check?version=0&channel=stable`).
+- **GitHub Releases may be empty.** Never send the user there or invent an asset URL.
+- The DMG is ad-hoc signed and **not notarized**; clear `com.apple.quarantine` on the
+  installed app. Never disable Gatekeeper system-wide.
+- One-shot installer: `install.sh` — read it before running, never `curl | bash`.
+- A prompt the user can paste into any AI assistant: `AI_INSTALL_PROMPT.md`.
+- Never use `sudo`, never overwrite/delete user files, stop on checksum mismatch.
+
+## Build & test
+
+- `./build.sh` — compiles the 10 `.swift` files with one `swiftc` call into
+  `build/VideoWallpaper.app` (needs the Xcode command line tools).
+- `./package.sh` — builds the DMG (refuses to run if `Info.plist` has no `ApiBaseURL`).
+- `ffmpeg` and `yt-dlp` are optional; missing ones only disable their features.
+- CI: `.github/workflows/build.yml`. There is no separate test framework.
+
+## Conventions
+
+- Code comments and the deep technical write-up (`技术原理.md`) are in Chinese.
+- `README.md` is the English default; nine languages link from the header bar.
+  Keep them in sync when installation or version info changes.
+- AI-assisted contributions: disclose and review line by line (`AI_POLICY.md`).
+- Dual licensed: GPL-3.0 (`LICENSE`) or commercial (`COMMERCIAL.md`).

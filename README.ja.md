@@ -4,6 +4,7 @@
   <p>どんな動画も、動くデスクトップに。<br>
   <a href="#features"><strong>Dòng を見る »</strong></a><br><br>
   <a href="#installation">macOS 版をダウンロード</a> · <a href="https://dongisgood.coze.site/en">公式サイト ↗</a><br>
+  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 AI にインストールしてもらう（かんたん） »</strong></a><br>
   <i>~ バージョン 3.31 · macOS 13 以降 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
@@ -18,6 +19,7 @@
 > 動画のリンクを貼るか、ローカルの動画をドラッグするだけ。ダウンロード、トリミング、継ぎ目のないループへの仕上げまで自動で行い、デスクトップに広げます。
 
 <h6 align="center">
+  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
@@ -27,6 +29,36 @@
 </h6>
 
 <a id="features" name="features"></a>
+
+---
+
+## 🤖 手作業は不要 —— これを AI に貼り付けるだけ
+
+> [!IMPORTANT]
+> **いちばんかんたんな導入方法：AI に一言お願いするだけ。** 下のブロックを丸ごとコピーし、Mac でコマンドを実行できる AI アシスタント（WorkBuddy、Claude Code、Cursor、Codex など）に貼り付けてください。
+>
+> 公式サイトから DMG をダウンロードし、SHA256 を検証し、「アプリケーション」にインストールし、macOS の初回起動時の確認も一度で済ませます。あとはダブルクリックで起動できます。
+>
+> ターミナルを開く必要も、システム設定を探す必要もありません。
+
+**① 次のブロックを丸ごとコピー**
+
+```text
+この Mac に macOS 用ライブ壁紙アプリ Dòng をインストールしてください。
+
+公式リポジトリ: https://github.com/zhang-1-kael/dong
+公式サイト: https://dongisgood.coze.site/en
+AI 向け手順書: リポジトリ内の AI_INSTALL.md／ワンコマンド版: install.sh
+
+まず手順書とスクリプトを読み、その指示に従ってください。公式の安定エンドポイントからダウンロードし、公式 API の SHA256 で検証し、「アプリケーション」に導入し、macOS の初回起動確認を済ませて起動、結果と使い方を報告してください。
+上記の公式ドメインのみを使い、sudo は使わず、ファイルの削除・上書きやシステム全体のセキュリティ設定変更はしないでください。ターミナル権限がない場合は最短のコマンドだけを提示し、インストールしたと見せかけないでください。
+```
+
+**② AI に貼り付けて完了を待つだけ。初回起動時にアプリが出す「ライブ壁紙を有効にしますか」の選択は自分で行います。**
+
+📖 関連ファイル：[AI 向け完全手順書](AI_INSTALL.md) · [プロンプト集](AI_INSTALL_PROMPT.md) · [インストールスクリプト](install.sh) · [公式サイトから手動ダウンロード](https://dongisgood.coze.site/en)
+
+---
 
 ## 機能
 
@@ -76,10 +108,14 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 
 #### Dòng をダウンロード
 
-[Releases](https://github.com/zhang-1-kael/dong/releases) ページから最新の `.dmg` をダウンロードし、開いて Dòng を「アプリケーション」にドラッグしてください。
+[公式サイト](https://dongisgood.coze.site/en) から最新の `.dmg` をダウンロードし、開いて Dòng を「アプリケーション」にドラッグしてください。
+
+このビルドは ad-hoc 署名で公証されていません。macOS に「壊れている」と言われたら、`xattr -dr com.apple.quarantine "/Applications/Dòng.app"` を一度実行してから開き直してください。
 
 > [!TIP]
-> 最初の正式版は現在パッケージ中です。公開までは、以下の手順でソースからビルドできます — 必要なのは Xcode コマンドラインツールだけで、インストールも一分ほどで完了します。
+> **手作業が面倒なら AI に任せられます。** [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) のプロンプトを任意の AI アシスタントに貼り付けるだけで、ダウンロードから検証・インストールまで自動でやってくれます。
+>
+> 自分でビルドしたい場合は以下の手順へ。必要なのは Xcode コマンドラインツールだけです。
 
 #### ソースからビルド
 

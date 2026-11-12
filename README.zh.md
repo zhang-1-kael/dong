@@ -4,6 +4,7 @@
   <p>把任何视频，变成会动的桌面。<br>
   <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
   <a href="#installation">下载 for macOS</a> · <a href="https://dongisgood.coze.site/en">访问官网 ↗</a><br>
+  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 让 AI 帮我装好（最省事） »</strong></a><br>
   <i>~ 版本 3.31 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <b>简体中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
@@ -18,6 +19,7 @@
 > 贴一条视频链接，或拖进一个本地视频，它会自动下载、裁剪、拼接成无缝循环，铺在你的桌面上。
 
 <h6 align="center">
+  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&labelColor=23272A&logo=apple&logoColor=white" alt="macOS 13+"></a>
@@ -25,6 +27,36 @@
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
+
+---
+
+## 🤖 不想手动装？把这段发给 AI，它帮你装好
+
+> [!IMPORTANT]
+> **最省事的安装方式：一段话，交给 AI。** 把下面整段复制，发给任何能操作你电脑的 AI 助手（WorkBuddy、Claude Code、Cursor、Codex 等）。
+>
+> 它会自己从官网下载安装包、核对校验和、装进「应用程序」，并把 macOS 首次打开的确认一次做完 —— 之后双击就能直接打开。
+>
+> 全程不用打开终端，也不用去系统设置里找开关。
+
+**① 复制下面这一整段**
+
+```text
+请帮我在这台 Mac 上安装 Dòng（macOS 动态壁纸 App）。
+
+官方仓库：https://github.com/zhang-1-kael/dong
+官网：https://dongisgood.coze.site/en
+给 AI 的安装手册：仓库里的 AI_INSTALL.md；一键安装脚本：install.sh
+
+请先读手册和脚本，再按手册执行：从官网稳定入口下载安装包、用官方接口给的 SHA256 校验、装进「应用程序」、完成 macOS 首次打开的确认、启动后告诉我结果和用法。
+只用上述官方域名；不要 sudo、不要删除或覆盖我的文件、不要改动系统级安全设置；如果你没有终端权限，就直接给我最短的可复制命令，不要假装已经装好。
+```
+
+**② 粘贴给 AI，等它装完。首次运行时应用自己弹的「是否启用动态壁纸」，留给我自己选。**
+
+📖 相关文件：[给 AI 的完整手册](AI_INSTALL.md) · [中英双语提示词](AI_INSTALL_PROMPT.md) · [一键安装脚本](install.sh) · [官网手动下载](https://dongisgood.coze.site/en)
+
+---
 
 ## Features
 
@@ -72,10 +104,14 @@
 
 #### 下载 Dòng
 
-前往 [Releases](https://github.com/zhang-1-kael/dong/releases) 页面下载最新的 `.dmg`，打开后把 Dòng 拖进「应用程序」即可。
+从[官网](https://dongisgood.coze.site/en)下载最新的 `.dmg`，打开后把 Dòng 拖进「应用程序」即可。
+
+安装包是 ad-hoc 签名、未经 Apple 公证。如果 macOS 提示「已损坏」，执行一次 `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` 再打开即可。
 
 > [!TIP]
-> 首个正式版本正在打包中。在它发布之前，你可以按下方步骤从源码构建一份 —— 只需要 Xcode 命令行工具，一分钟装好。
+> **懒得手动装？** 把 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) 里的提示词整段复制给任意 AI 助手，它会帮你下载、校验并装好，一条命令搞定。
+>
+> 想自己编译？按下面的步骤来就行，只需要 Xcode 命令行工具。
 
 #### 从源码构建
 

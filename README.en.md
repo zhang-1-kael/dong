@@ -4,6 +4,7 @@
   <p>Turn any video into a living desktop.<br>
   <a href="#features"><strong>Explore Dòng »</strong></a><br><br>
   <a href="#installation">Download for macOS</a> · <a href="https://dongisgood.coze.site/en">Official website ↗</a><br>
+  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Let an AI install it for me (easiest) »</strong></a><br>
   <i>~ Version 3.31 · macOS 13 and later · Apple Silicon ~</i></p>
   <p>
     <b>English</b> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
@@ -18,6 +19,7 @@
 > Paste a video link, or drag in a local video: it downloads, trims, and stitches it into a seamless loop, spread across your desktop.
 
 <h6 align="center">
+  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
@@ -25,6 +27,36 @@
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
+
+---
+
+## 🤖 Skip the manual install — send this to an AI
+
+> [!IMPORTANT]
+> **The easiest way to install Dòng: one message to an AI assistant.** Copy the block below into any assistant that can run commands on your Mac (WorkBuddy, Claude Code, Cursor, Codex, ...).
+>
+> It downloads the official DMG, verifies the SHA256, installs the app into Applications, and completes macOS's one-time first-open confirmation — from then on a double-click just works.
+>
+> No terminal window for you, no hunting through System Settings.
+
+**① Copy this whole block**
+
+```text
+Please install Dòng, a macOS live wallpaper app, on this Mac.
+
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
+
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+```
+
+**② Paste it into the AI and let it finish. Leave the app's own first-run "enable live wallpaper?" choice to me.**
+
+📖 More: [full manual for AI agents](AI_INSTALL.md) · [bilingual prompt](AI_INSTALL_PROMPT.md) · [one-shot installer](install.sh) · [manual download](https://dongisgood.coze.site/en)
+
+---
 
 ## Features
 
@@ -72,10 +104,14 @@ Grab a frame and set it as the system wallpaper — moving when unlocked, the sa
 
 #### Download Dòng
 
-Grab the latest `.dmg` from the [Releases](https://github.com/zhang-1-kael/dong/releases) page, open it, and drag Dòng into "Applications".
+Download the latest `.dmg` from the [official site](https://dongisgood.coze.site/en), open it, and drag Dòng into "Applications".
+
+The build is ad-hoc signed and not notarized. If macOS says it is damaged, run `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` once, then open it again.
 
 > [!TIP]
-> The first official release is being packaged. Until it ships, you can build your own from source with the steps below — all you need is the Xcode command line tools, a minute to install.
+> **Let an AI do it for you.** Copy the prompt in [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) into any AI assistant — it downloads, verifies and installs Dòng in one command.
+>
+> Prefer to build it yourself? The steps below need only the Xcode command line tools.
 
 #### Build from source
 

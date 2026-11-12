@@ -4,6 +4,7 @@
   <p>Любое видео — живые обои.<br>
   <a href="#features"><strong>Посмотреть Dòng »</strong></a><br><br>
   <a href="#installation">Скачать для macOS</a> · <a href="https://dongisgood.coze.site/en">Официальный сайт ↗</a><br>
+  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Пусть ИИ установит за меня (самый простой способ) »</strong></a><br>
   <i>~ Версия 3.31 · macOS 13 и выше · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
@@ -18,6 +19,7 @@
 > Вставьте ссылку на видео или перетащите локальный файл: скачивание, обрезка и склейка в бесшовную петлю происходят автоматически и оказываются прямо на рабочем столе.
 
 <h6 align="center">
+  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
@@ -27,6 +29,36 @@
 </h6>
 
 <a id="features" name="features"></a>
+
+---
+
+## 🤖 Не хотите ставить вручную? Отправьте это ИИ
+
+> [!IMPORTANT]
+> **Самый простой способ установить Dòng: одно сообщение ИИ.** Скопируйте блок ниже в любого помощника, который может выполнять команды на вашем Mac (WorkBuddy, Claude Code, Cursor, Codex, ...).
+>
+> Он скачает официальный DMG, проверит SHA256, установит приложение в «Программы» и один раз выполнит подтверждение macOS при первом запуске — дальше достаточно двойного щелчка.
+>
+> Вам не нужно открывать терминал и искать нужный пункт в настройках системы.
+
+**① Скопируйте весь блок**
+
+```text
+Установи на этом Mac приложение Dòng — живые обои для macOS.
+
+Официальный репозиторий: https://github.com/zhang-1-kael/dong
+Официальный сайт: https://dongisgood.coze.site/en
+Инструкция для ИИ: AI_INSTALL.md в репозитории; скрипт установки: install.sh
+
+Сначала прочитай инструкцию и скрипт, затем действуй по инструкции: скачай установщик со стабильной официальной ссылки, проверь SHA256 из официального API, установи в /Applications, выполни однократное подтверждение macOS при первом запуске, запусти приложение и сообщи результат и как им пользоваться.
+Используй только указанные официальные домены; без sudo, не удаляй и не перезаписывай мои файлы, не меняй системные настройки безопасности. Если доступа к терминалу нет, просто дай самые короткие команды и не говори, что установка выполнена.
+```
+
+**② Вставьте ИИ и дождитесь завершения. Выбор при первом запуске («включить живые обои?») я сделаю сам.**
+
+📖 Подробнее: [полная инструкция для ИИ](AI_INSTALL.md) · [промпты на двух языках](AI_INSTALL_PROMPT.md) · [скрипт установки](install.sh) · [скачать вручную](https://dongisgood.coze.site/en)
+
+---
 
 ## Возможности
 
@@ -76,10 +108,14 @@ ffmpeg превращает «движение» в кадре в одномер
 
 #### Скачать Dòng
 
-Возьмите свежий `.dmg` на странице [Releases](https://github.com/zhang-1-kael/dong/releases), откройте и перетащите Dòng в «Программы».
+Скачайте свежую `.dmg` с [официального сайта](https://dongisgood.coze.site/en), откройте и перетащите Dòng в «Программы».
+
+Сборка подписана ad-hoc и не нотаризована. Если macOS говорит, что она повреждена, один раз выполните `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` и откройте снова.
 
 > [!TIP]
-> Первый официальный релиз сейчас в сборке. Пока он не вышел, можете собрать сами из исходников по шагам ниже — нужны только командные инструменты Xcode, установка занимает минуту.
+> **Или поручите это ИИ.** Скопируйте промпт из [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) в любого ИИ-ассистента — он скачает, проверит и установит Dòng одной командой.
+>
+> Хотите собрать сами? Следуйте шагам ниже — нужны только командные инструменты Xcode.
 
 #### Сборка из исходников
 
