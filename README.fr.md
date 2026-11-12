@@ -2,14 +2,15 @@
   <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>Transformez n'importe quelle vidéo en bureau vivant.<br>
-  <a href="#features"><strong>Découvrir Dòng »</strong></a><br><br>
+  <a href="#fonctionnalités"><strong>Découvrir Dòng »</strong></a><br><br>
   <a href="#installation">Télécharger pour macOS</a> · <a href="https://dongisgood.coze.site/en">Site officiel ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Laisser une IA l'installer (le plus simple) »</strong></a><br>
+  <a href="i18n/fr/AI_INSTALL_PROMPT.md"><strong>🤖 Laisser une IA l'installer (le plus simple) »</strong></a><br>
   <i>~ Version 3.31 · macOS 13 et versions ultérieures · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <b>Français</b><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
+  <p><sub>Tout le contenu de cette page — captures, documents liés et prompt — est en français.</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,16 +20,14 @@
 > Collez un lien vidéo ou glissez un fichier local : l'app télécharge, découpe et assemble le tout en une boucle sans rupture, étalée sur votre bureau.
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
+  <a href="i18n/fr/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-Un_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/Licence-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
-
-<a id="features" name="features"></a>
 
 ---
 
@@ -40,23 +39,26 @@
 > Il télécharge le DMG officiel, vérifie le SHA256, installe l'app dans Applications et effectue la confirmation unique de macOS au premier lancement — ensuite un double-clic suffit.
 >
 > Aucun terminal à ouvrir pour vous, aucun réglage système à chercher.
+>
+> Le prompt ci-dessous est volontairement en anglais pour être compris par tous les outils d'IA. Sa dernière ligne demande à l'IA de répondre en français : vous ne lisez donc que du français.
 
 **① Copiez tout ce bloc**
 
 ```text
-Installe Dòng, une app de fond d'écran animé pour macOS, sur ce Mac.
+Please install Dòng, a macOS live wallpaper app, on this Mac.
 
-Dépôt officiel : https://github.com/zhang-1-kael/dong
-Site officiel : https://dongisgood.coze.site/en
-Manuel d'installation pour IA : AI_INSTALL.md dans ce dépôt ; script : install.sh
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
 
-Lis d'abord le manuel et le script, puis suis le manuel : télécharge depuis l'URL stable officielle, vérifie le SHA256 fourni par l'API officielle, installe dans /Applications, effectue la confirmation unique de macOS au premier lancement, lance l'app, puis indique le résultat et la prise en main.
-N'utilise que les domaines officiels ci-dessus ; pas de sudo, pas de suppression ou d'écrasement de mes fichiers, aucune modification des réglages de sécurité du système. Sans accès au terminal, donne-moi simplement les commandes les plus courtes, sans prétendre avoir installé quoi que ce soit.
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in French.
 ```
 
 **② Collez-le dans l'IA et laissez-la terminer. Le choix proposé par l'app au premier lancement (« activer le fond animé ? ») reste le mien.**
 
-📖 Pour aller plus loin : [manuel complet pour les IA](AI_INSTALL.md) · [prompts bilingues](AI_INSTALL_PROMPT.md) · [script d'installation](install.sh) · [téléchargement manuel](https://dongisgood.coze.site/en)
+📖 Pour aller plus loin : [manuel complet pour les IA](i18n/fr/AI_INSTALL.md) · [prompts bilingues](i18n/fr/AI_INSTALL_PROMPT.md) · [script d'installation](install.sh) · [téléchargement manuel](https://dongisgood.coze.site/en) · [Tous les documents en français](i18n/fr/GUIDE.md)
 
 ---
 
@@ -83,7 +85,7 @@ Un fondu croisé de 0,4 seconde entre la fin et le début efface complètement l
 Une app résidente dans la barre de menus : fond d'écran actuel, espace disque, temps de connexion, un champ pour coller un lien — chaque contrôle dessiné à la main en AppKit.
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Panneau de barre de menus de Dòng">
+  <img src="assets/i18n/fr/panel.jpg" width="620" alt="Panneau de barre de menus de Dòng">
 </p>
 
 ### 📚 Bibliothèque en cascade
@@ -91,7 +93,7 @@ Une app résidente dans la barre de menus : fond d'écran actuel, espace disque,
 Tous les fonds d'écran dans une grille de couvertures ; survolez pour prévisualiser, cliquez pour changer. Volume, contrôles de lecture, infos sur l'image courante — tout sur un seul écran.
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Bibliothèque de fonds d'écran de Dòng">
+  <img src="assets/i18n/fr/library.jpg" width="720" alt="Bibliothèque de fonds d'écran de Dòng">
 </p>
 
 ### 🔒 La même image sur l'écran de verrouillage
@@ -102,8 +104,6 @@ Capturez une image et définissez-la comme fond d'écran système — animé une
 
 ## Utilisation
 
-<a id="installation" name="installation"></a>
-
 ### Installation
 
 #### Télécharger Dòng
@@ -113,7 +113,7 @@ Téléchargez la dernière `.dmg` depuis le [site officiel](https://dongisgood.c
 Cette version est signée ad-hoc et non notarisée. Si macOS la dit « endommagée », exécutez une fois `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` puis rouvrez-la.
 
 > [!TIP]
-> **Laissez une IA s’en charger.** Copiez le prompt de [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) dans n’importe quel assistant IA : il télécharge, vérifie et installe Dòng en une commande.
+> **Laissez une IA s’en charger.** Copiez le prompt de [AI_INSTALL_PROMPT.md](i18n/fr/AI_INSTALL_PROMPT.md) dans n’importe quel assistant IA : il télécharge, vérifie et installe Dòng en une commande.
 >
 > Vous préférez compiler vous-même ? Suivez les étapes ci-dessous — seuls les outils en ligne de commande Xcode sont nécessaires.
 
@@ -194,7 +194,7 @@ Quatre pipelines indépendants autour d'une « app de barre de menus sans fenêt
 | `LockScreen.swift` | 70 | Capture d'une image comme fond d'écran système |
 | `Presets.swift` | 47 | Premier import des ressources intégrées |
 
-**La documentation technique complète est dans [`技术原理.md`](技术原理.md) (en chinois)** : pourquoi la fenêtre doit dépasser l'écran de 24 pt,
+**La documentation technique complète est dans [guide technique](i18n/fr/GUIDE.md)** : pourquoi la fenêtre doit dépasser l'écran de 24 pt,
 pourquoi la signature `--deep` est nuisible, pourquoi le mixage audio d'une boucle doit se faire en trois segments,
 pourquoi le panneau dessiné à la main recouvre le verre dépoli — chaque piège est documenté, avec l'erreur qui l'a provoqué.
 
@@ -211,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # import par lot, affiche les résulta
 VideoWallpaper --link "https://…"         # téléchargement par lien + import
 ```
 
-Les variables d'environnement de débogage se trouvent à la section 9 de `技术原理.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU`, etc.).
+Les variables d'environnement de débogage se trouvent à la section 9 de `GUIDE.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU`, etc.).
 
 ---
 
@@ -246,7 +246,7 @@ sinon vos utilisateurs enverront leurs données au serveur de l'auteur. Ce n'est
 
 Le code et la documentation sont sous licence **GPL-3.0** — voir [LICENSE](LICENSE). Toute distribution d'un binaire modifié doit fournir le code source complet correspondant sous la même licence.
 
-**Double licence :** Pour utiliser Dòng dans un produit commercial propriétaire, une licence commerciale distincte est disponible — voir [COMMERCIAL.md](COMMERCIAL.md) ou ouvrir une issue pour contacter l'auteur.
+**Double licence :** Pour utiliser Dòng dans un produit commercial propriétaire, une licence commerciale distincte est disponible — voir [GUIDE.md](i18n/fr/GUIDE.md) ou ouvrir une issue pour contacter l'auteur.
 
 > **Note historique :** les versions v3.31 et antérieures ont été publiées sous licence MIT. Ces droits ne peuvent pas être révoqués ; la GPL-3.0 ne s'applique qu'aux versions ultérieures.
 
@@ -261,7 +261,7 @@ Le code et la documentation sont sous licence **GPL-3.0** — voir [LICENSE](LIC
 
 ---
 
-## About
+## À propos
 
 I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
 why a wallpaper couldn't be a moving video, so I wrote one in Swift from

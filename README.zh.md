@@ -2,14 +2,15 @@
   <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>把任何视频，变成会动的桌面。<br>
-  <a href="#features"><strong>探索 Dòng »</strong></a><br><br>
-  <a href="#installation">下载 for macOS</a> · <a href="https://dongisgood.coze.site/en">访问官网 ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 让 AI 帮我装好（最省事） »</strong></a><br>
+  <a href="#功能"><strong>探索 Dòng »</strong></a><br><br>
+  <a href="#安装">下载 for macOS</a> · <a href="https://dongisgood.coze.site/en">访问官网 ↗</a><br>
+  <a href="i18n/zh/AI_INSTALL_PROMPT.md"><strong>🤖 让 AI 帮我装好（最省事） »</strong></a><br>
   <i>~ 版本 3.31 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <b>简体中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
+  <p><sub>本页所有内容——截图、链接的文档、提示词——都是简体中文。</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,8 +20,8 @@
 > 贴一条视频链接，或拖进一个本地视频，它会自动下载、裁剪、拼接成无缝循环，铺在你的桌面上。
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
+  <a href="i18n/zh/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-%E4%B8%80%E6%9D%A1%E6%B6%88%E6%81%AF-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&labelColor=23272A&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
@@ -38,27 +39,30 @@
 > 它会自己从官网下载安装包、核对校验和、装进「应用程序」，并把 macOS 首次打开的确认一次做完 —— 之后双击就能直接打开。
 >
 > 全程不用打开终端，也不用去系统设置里找开关。
+>
+> 下面这段提示词刻意用英文写，这样任何 AI 工具都能读懂；最后一句已经要求它用简体中文回复你，所以你看到的仍然是中文。
 
 **① 复制下面这一整段**
 
 ```text
-请帮我在这台 Mac 上安装 Dòng（macOS 动态壁纸 App）。
+Please install Dòng, a macOS live wallpaper app, on this Mac.
 
-官方仓库：https://github.com/zhang-1-kael/dong
-官网：https://dongisgood.coze.site/en
-给 AI 的安装手册：仓库里的 AI_INSTALL.md；一键安装脚本：install.sh
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
 
-请先读手册和脚本，再按手册执行：从官网稳定入口下载安装包、用官方接口给的 SHA256 校验、装进「应用程序」、完成 macOS 首次打开的确认、启动后告诉我结果和用法。
-只用上述官方域名；不要 sudo、不要删除或覆盖我的文件、不要改动系统级安全设置；如果你没有终端权限，就直接给我最短的可复制命令，不要假装已经装好。
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in Simplified Chinese.
 ```
 
 **② 粘贴给 AI，等它装完。首次运行时应用自己弹的「是否启用动态壁纸」，留给我自己选。**
 
-📖 相关文件：[给 AI 的完整手册](AI_INSTALL.md) · [中英双语提示词](AI_INSTALL_PROMPT.md) · [一键安装脚本](install.sh) · [官网手动下载](https://dongisgood.coze.site/en)
+📖 相关文件：[给 AI 的完整手册](i18n/zh/AI_INSTALL.md) · [中英双语提示词](i18n/zh/AI_INSTALL_PROMPT.md) · [一键安装脚本](install.sh) · [官网手动下载](https://dongisgood.coze.site/en) · [更多中文文档](i18n/zh/GUIDE.md)
 
 ---
 
-## Features
+## 功能
 
 ### 🖥 桌面级动态壁纸
 
@@ -81,7 +85,7 @@
 一个常驻菜单栏的 App：当前壁纸、磁盘占用、在线时长，粘贴链接即导入，全部控件 AppKit 自绘。
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Dòng 菜单栏面板">
+  <img src="assets/i18n/zh/panel.jpg" width="620" alt="Dòng 菜单栏面板">
 </p>
 
 ### 📚 瀑布流壁纸库
@@ -89,7 +93,7 @@
 按封面网格铺开全部壁纸，悬停即预览，点击切换。音量、播放控制、当前帧信息一屏搞定。
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Dòng 壁纸库">
+  <img src="assets/i18n/zh/library.jpg" width="720" alt="Dòng 壁纸库">
 </p>
 
 ### 🔒 锁屏同款画面
@@ -98,9 +102,9 @@
 
 ---
 
-## Usage
+## 使用方法
 
-### Installation
+### 安装
 
 #### 下载 Dòng
 
@@ -109,7 +113,7 @@
 安装包是 ad-hoc 签名、未经 Apple 公证。如果 macOS 提示「已损坏」，执行一次 `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` 再打开即可。
 
 > [!TIP]
-> **懒得手动装？** 把 [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) 里的提示词整段复制给任意 AI 助手，它会帮你下载、校验并装好，一条命令搞定。
+> **懒得手动装？** 把 [AI_INSTALL_PROMPT.md](i18n/zh/AI_INSTALL_PROMPT.md) 里的提示词整段复制给任意 AI 助手，它会帮你下载、校验并装好，一条命令搞定。
 >
 > 想自己编译？按下面的步骤来就行，只需要 Xcode 命令行工具。
 
@@ -190,7 +194,7 @@ VW_NO_PRESETS=1 ./package.sh    # 不带内置壁纸，DMG 小 360 MB
 | `LockScreen.swift` | 70 | 抽帧设为系统壁纸 |
 | `Presets.swift` | 47 | 内置素材首次导入 |
 
-**完整的技术细节在 [`技术原理.md`](技术原理.md)**：为什么窗口要比屏幕大 24pt、
+**完整的技术细节在 [技术文档](i18n/zh/GUIDE.md)**：为什么窗口要比屏幕大 24pt、
 为什么 `--deep` 签名有害、为什么循环混音必须分三段 seek、
 为什么面板自绘会把毛玻璃盖住 —— 每个坑都有记录，包括踩坑时错在哪。
 
@@ -207,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # 批量导入并打印处理结果
 VideoWallpaper --link "https://…"         # 链接下载 + 导入
 ```
 
-调试用环境变量见 `技术原理.md` 第 9 节（`VW_PANEL_SHOT`、`VW_GEOM`、`VW_DUMP_MENU` 等）。
+调试用环境变量见 `GUIDE.md` 第 9 节（`VW_PANEL_SHOT`、`VW_GEOM`、`VW_DUMP_MENU` 等）。
 
 ---
 
@@ -242,7 +246,7 @@ CPU 架构、语言、事件名。
 
 代码与文档以 **GPL-3.0** 授权，见 [LICENSE](LICENSE)。分发修改后的二进制时，必须以同一许可提供完整对应源码。
 
-**双许可：** 若需将 Dòng 用于闭源商业产品，可另行申请商业授权 —— 见 [COMMERCIAL.md](COMMERCIAL.md)，或开 issue 联系作者。
+**双许可：** 若需将 Dòng 用于闭源商业产品，可另行申请商业授权 —— 见 [GUIDE.md](i18n/zh/GUIDE.md)，或开 issue 联系作者。
 
 > **历史版本说明：** v3.31 及之前以 MIT 授权发布，该授权不可追溯撤销；GPL-3.0 仅适用于其后的版本。
 
@@ -257,7 +261,7 @@ CPU 架构、语言、事件名。
 
 ---
 
-## About
+## 关于
 
 I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
 why a wallpaper couldn't be a moving video, so I wrote one in Swift from

@@ -2,14 +2,15 @@
   <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>Любое видео — живые обои.<br>
-  <a href="#features"><strong>Посмотреть Dòng »</strong></a><br><br>
-  <a href="#installation">Скачать для macOS</a> · <a href="https://dongisgood.coze.site/en">Официальный сайт ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Пусть ИИ установит за меня (самый простой способ) »</strong></a><br>
+  <a href="#возможности"><strong>Посмотреть Dòng »</strong></a><br><br>
+  <a href="#установка">Скачать для macOS</a> · <a href="https://dongisgood.coze.site/en">Официальный сайт ↗</a><br>
+  <a href="i18n/ru/AI_INSTALL_PROMPT.md"><strong>🤖 Пусть ИИ установит за меня (самый простой способ) »</strong></a><br>
   <i>~ Версия 3.31 · macOS 13 и выше · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <b>Русский</b>
   </p>
+  <p><sub>Всё содержимое этой страницы — снимки, связанные документы и промпт — на русском языке.</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,16 +20,14 @@
 > Вставьте ссылку на видео или перетащите локальный файл: скачивание, обрезка и склейка в бесшовную петлю происходят автоматически и оказываются прямо на рабочем столе.
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
+  <a href="i18n/ru/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-%D0%9E%D0%B4%D0%BD%D0%BE_%D1%81%D0%BE%D0%BE%D0%B1%D1%89%D0%B5%D0%BD%D0%B8%D0%B5-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/%D0%9B%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
-
-<a id="features" name="features"></a>
 
 ---
 
@@ -40,23 +39,26 @@
 > Он скачает официальный DMG, проверит SHA256, установит приложение в «Программы» и один раз выполнит подтверждение macOS при первом запуске — дальше достаточно двойного щелчка.
 >
 > Вам не нужно открывать терминал и искать нужный пункт в настройках системы.
+>
+> Промпт ниже намеренно написан по-английски, чтобы его понял любой ИИ-инструмент. Последняя строка просит отвечать по-русски, поэтому всё, что вы читаете, остаётся на русском.
 
 **① Скопируйте весь блок**
 
 ```text
-Установи на этом Mac приложение Dòng — живые обои для macOS.
+Please install Dòng, a macOS live wallpaper app, on this Mac.
 
-Официальный репозиторий: https://github.com/zhang-1-kael/dong
-Официальный сайт: https://dongisgood.coze.site/en
-Инструкция для ИИ: AI_INSTALL.md в репозитории; скрипт установки: install.sh
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
 
-Сначала прочитай инструкцию и скрипт, затем действуй по инструкции: скачай установщик со стабильной официальной ссылки, проверь SHA256 из официального API, установи в /Applications, выполни однократное подтверждение macOS при первом запуске, запусти приложение и сообщи результат и как им пользоваться.
-Используй только указанные официальные домены; без sudo, не удаляй и не перезаписывай мои файлы, не меняй системные настройки безопасности. Если доступа к терминалу нет, просто дай самые короткие команды и не говори, что установка выполнена.
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in Russian.
 ```
 
 **② Вставьте ИИ и дождитесь завершения. Выбор при первом запуске («включить живые обои?») я сделаю сам.**
 
-📖 Подробнее: [полная инструкция для ИИ](AI_INSTALL.md) · [промпты на двух языках](AI_INSTALL_PROMPT.md) · [скрипт установки](install.sh) · [скачать вручную](https://dongisgood.coze.site/en)
+📖 Подробнее: [полная инструкция для ИИ](i18n/ru/AI_INSTALL.md) · [промпты на двух языках](i18n/ru/AI_INSTALL_PROMPT.md) · [скрипт установки](install.sh) · [скачать вручную](https://dongisgood.coze.site/en) · [Все документы на русском](i18n/ru/GUIDE.md)
 
 ---
 
@@ -83,7 +85,7 @@ ffmpeg превращает «движение» в кадре в одномер
 Постоянный резидент в строке меню: текущие обои, занятое место на диске, время онлайн, вставили ссылку — импорт пошёл. Все элементы управления нарисованы вручную на AppKit.
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Панель Dòng в строке меню">
+  <img src="assets/i18n/ru/panel.jpg" width="620" alt="Панель Dòng в строке меню">
 </p>
 
 ### 📚 Библиотека обоев
@@ -91,7 +93,7 @@ ffmpeg превращает «движение» в кадре в одномер
 Все обои сеткой обложек; наведите — предпросмотр, щёлкните — переключение. Громкость, управление воспроизведением, информация о текущем кадре — всё на одном экране.
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Библиотека обоев Dòng">
+  <img src="assets/i18n/ru/library.jpg" width="720" alt="Библиотека обоев Dòng">
 </p>
 
 ### 🔒 Тот же кадр на экране блокировки
@@ -102,8 +104,6 @@ ffmpeg превращает «движение» в кадре в одномер
 
 ## Использование
 
-<a id="installation" name="installation"></a>
-
 ### Установка
 
 #### Скачать Dòng
@@ -113,7 +113,7 @@ ffmpeg превращает «движение» в кадре в одномер
 Сборка подписана ad-hoc и не нотаризована. Если macOS говорит, что она повреждена, один раз выполните `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` и откройте снова.
 
 > [!TIP]
-> **Или поручите это ИИ.** Скопируйте промпт из [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) в любого ИИ-ассистента — он скачает, проверит и установит Dòng одной командой.
+> **Или поручите это ИИ.** Скопируйте промпт из [AI_INSTALL_PROMPT.md](i18n/ru/AI_INSTALL_PROMPT.md) в любого ИИ-ассистента — он скачает, проверит и установит Dòng одной командой.
 >
 > Хотите собрать сами? Следуйте шагам ниже — нужны только командные инструменты Xcode.
 
@@ -194,7 +194,7 @@ VW_NO_PRESETS=1 ./package.sh    # без встроенных обоев, DMG м
 | `LockScreen.swift` | 70 | Взять кадр и поставить системные обои |
 | `Presets.swift` | 47 | Первичный импорт встроенных материалов |
 
-**Полное техническое описание — в [`技术原理.md`](技术原理.md) (на китайском)**: почему окно должно быть на 24pt больше экрана,
+**Полное техническое описание — в [техническое описание](i18n/ru/GUIDE.md)**: почему окно должно быть на 24pt больше экрана,
 почему подпись `--deep` вредна, почему микширование звука петли должно делать seek тремя отрезками,
 почему нарисованная вручную панель перекрывает матовое стекло — каждая ловушка задокументирована, вместе с ошибкой, которая к ней привела.
 
@@ -211,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # пакетный импорт с в�
 VideoWallpaper --link "https://…"         # скачивание по ссылке + импорт
 ```
 
-Переменные окружения для отладки — в разделе 9 `技术原理.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU` и другие).
+Переменные окружения для отладки — в разделе 9 `GUIDE.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU` и другие).
 
 ---
 
@@ -246,7 +246,7 @@ VideoWallpaper --link "https://…"         # скачивание по ссыл
 
 Код и документация распространяются по лицензии **GPL-3.0** — см. [LICENSE](LICENSE). При распространении изменённого бинарного файла необходимо предоставить полный соответствующий исходный код на тех же условиях.
 
-**Двойное лицензирование:** Для использования Dòng в закрытом коммерческом продукте доступна отдельная коммерческая лицензия — см. [COMMERCIAL.md](COMMERCIAL.md) или откройте issue для связи с автором.
+**Двойное лицензирование:** Для использования Dòng в закрытом коммерческом продукте доступна отдельная коммерческая лицензия — см. [GUIDE.md](i18n/ru/GUIDE.md) или откройте issue для связи с автором.
 
 > **Историческая справка:** версии v3.31 и ранее были выпущены под лицензией MIT. Эти права не могут быть отозваны; GPL-3.0 применяется только к более поздним версиям.
 
@@ -261,7 +261,7 @@ VideoWallpaper --link "https://…"         # скачивание по ссыл
 
 ---
 
-## About
+## Об авторе
 
 I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
 why a wallpaper couldn't be a moving video, so I wrote one in Swift from

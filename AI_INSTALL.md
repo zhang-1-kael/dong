@@ -32,6 +32,15 @@
   `c4b8f4476af35210cbc072c1c3c5208190d6dcf909cc5aed93c8ddb84a7da8df`.
   These values change with each release — always read the live metadata endpoint.
 
+## Language of your reply
+
+The prompt that reaches you ends with `Reply to me in <language>.` **Answer in
+that language.** The person reads only their own language: their README, their
+screenshots, and their own copies of the prompt, the installation manual and
+the project guide all live in `i18n/<lang>/`. This file and `AGENTS.md` stay in
+English because they are read by AI agents, not humans. `install.sh` prints its
+log in English too — summarise the result for the user in their language.
+
 ## Path A — you have a shell (preferred)
 
 1. Fetch the installer **and read it before running it**. Never `curl | bash`.

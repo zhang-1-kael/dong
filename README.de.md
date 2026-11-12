@@ -2,14 +2,15 @@
   <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>Jedes Video wird zum lebendigen Desktop.<br>
-  <a href="#features"><strong>Dòng entdecken »</strong></a><br><br>
+  <a href="#funktionen"><strong>Dòng entdecken »</strong></a><br><br>
   <a href="#installation">Download für macOS</a> · <a href="https://dongisgood.coze.site/en">Offizielle Website ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Von einer KI installieren lassen (am einfachsten) »</strong></a><br>
+  <a href="i18n/de/AI_INSTALL_PROMPT.md"><strong>🤖 Von einer KI installieren lassen (am einfachsten) »</strong></a><br>
   <i>~ Version 3.31 · macOS 13 und neuer · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <b>Deutsch</b> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
+  <p><sub>Alle Inhalte dieser Seite — Screenshots, verlinkte Dokumente und der Prompt — sind auf Deutsch.</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,16 +20,14 @@
 > Einen Video-Link einfügen oder ein lokales Video reinziehen: Download, Zuschnitt und nahtlose Schleife laufen automatisch und landen auf dem Desktop.
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
+  <a href="i18n/de/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-Eine_Nachricht-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/Lizenz-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
-
-<a id="features" name="features"></a>
 
 ---
 
@@ -40,23 +39,26 @@
 > Sie lädt das offizielle DMG, prüft die SHA256, installiert die App in Programme und erledigt die einmalige Bestätigung von macOS beim ersten Start — danach genügt ein Doppelklick.
 >
 > Du musst weder ein Terminal öffnen noch in den Systemeinstellungen suchen.
+>
+> Der Prompt unten ist absichtlich auf Englisch, damit ihn jedes KI-Werkzeug versteht. Die letzte Zeile verlangt eine Antwort auf Deutsch — du liest also durchgehend Deutsch.
 
 **① Kopiere diesen ganzen Block**
 
 ```text
-Bitte installiere Dòng, eine Live-Wallpaper-App für macOS, auf diesem Mac.
+Please install Dòng, a macOS live wallpaper app, on this Mac.
 
-Offizielles Repo: https://github.com/zhang-1-kael/dong
-Offizielle Website: https://dongisgood.coze.site/en
-Installationshandbuch für KIs: AI_INSTALL.md im Repo; Ein-Klick-Skript: install.sh
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
 
-Lies zuerst Handbuch und Skript und folge dann dem Handbuch: von der offiziellen stabilen URL herunterladen, SHA256 aus der offiziellen API prüfen, nach /Applications installieren, die einmalige Bestätigung von macOS beim ersten Start erledigen, die App starten und mir Ergebnis und Bedienung melden.
-Nur die oben genannten offiziellen Domains verwenden; kein sudo, keine meiner Dateien löschen oder überschreiben, keine systemweiten Sicherheitseinstellungen ändern. Ohne Terminal-Zugriff gib mir nur die kürzesten kopierbaren Befehle — behaupte nicht, etwas installiert zu haben.
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in German.
 ```
 
 **② In die KI einfügen und fertig. Die Auswahl beim ersten Start («Live-Wallpaper aktivieren?») treffe ich selbst.**
 
-📖 Mehr dazu: [vollständiges Handbuch für KIs](AI_INSTALL.md) · [zweisprachige Prompts](AI_INSTALL_PROMPT.md) · [Installationsskript](install.sh) · [manueller Download](https://dongisgood.coze.site/en)
+📖 Mehr dazu: [vollständiges Handbuch für KIs](i18n/de/AI_INSTALL.md) · [zweisprachige Prompts](i18n/de/AI_INSTALL_PROMPT.md) · [Installationsskript](install.sh) · [manueller Download](https://dongisgood.coze.site/en) · [Alle Dokumente auf Deutsch](i18n/de/GUIDE.md)
 
 ---
 
@@ -83,7 +85,7 @@ Eine 0,4-Sekunden-Crossfade zwischen Ende und Anfang lässt den Schleifenpunkt v
 Eine ständige Menüleisten-App: aktuelles Wallpaper, Plattenbelegung, Online-Zeit; Link einfügen genügt zum Import — alle Controls in AppKit von Hand gezeichnet.
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Dòng-Menüleisten-Panel">
+  <img src="assets/i18n/de/panel.jpg" width="620" alt="Dòng-Menüleisten-Panel">
 </p>
 
 ### 📚 Wasserfall-Wallpaper-Bibliothek
@@ -91,7 +93,7 @@ Eine ständige Menüleisten-App: aktuelles Wallpaper, Plattenbelegung, Online-Ze
 Alle Wallpaper im Cover-Raster; hovern zum Vorab-Ansehen, Klicken zum Wechseln. Lautstärke, Wiedergabesteuerung, aktuelle Frame-Infos — alles auf einem Screen.
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Dòng-Wallpaper-Bibliothek">
+  <img src="assets/i18n/de/library.jpg" width="720" alt="Dòng-Wallpaper-Bibliothek">
 </p>
 
 ### 🔒 Gleicher Frame auf dem Sperrbildschirm
@@ -102,8 +104,6 @@ Einen Frame greifen und als System-Wallpaper setzen — bewegt beim Entsperren, 
 
 ## Verwendung
 
-<a id="installation" name="installation"></a>
-
 ### Installation
 
 #### Dòng herunterladen
@@ -113,7 +113,7 @@ Die neueste `.dmg` gibt es auf der [offiziellen Website](https://dongisgood.coze
 Der Build ist ad-hoc signiert und nicht notarisiert. Sagt macOS, er sei beschädigt, einmal `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` ausführen und erneut öffnen.
 
 > [!TIP]
-> **Oder eine KI macht das.** Kopiere den Prompt aus [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) in einen beliebigen KI-Assistenten — er lädt, prüft und installiert Dòng mit einem Befehl.
+> **Oder eine KI macht das.** Kopiere den Prompt aus [AI_INSTALL_PROMPT.md](i18n/de/AI_INSTALL_PROMPT.md) in einen beliebigen KI-Assistenten — er lädt, prüft und installiert Dòng mit einem Befehl.
 >
 > Lieber selbst bauen? Die Schritte unten brauchen nur die Xcode-Kommandozeilen-Tools.
 
@@ -194,7 +194,7 @@ Vier unabhängige Pipelines um eine „Menüleisten-App ohne Fenster":
 | `LockScreen.swift` | 70 | Frame als System-Wallpaper greifen |
 | `Presets.swift` | 47 | Erstimport der eingebauten Assets |
 
-**Die vollständige technische Beschreibung steht in [`技术原理.md`](技术原理.md) (Chinesisch)**: warum das Fenster 24pt größer sein muss als der Bildschirm,
+**Die vollständige technische Beschreibung steht in [Technikhandbuch](i18n/de/GUIDE.md)**: warum das Fenster 24pt größer sein muss als der Bildschirm,
 warum `--deep`-Signierung schädlich ist, warum Loop-Audio-Mixing in drei Segmenten seeken muss,
 warum das handgezeichnete Panel das Milchglas überdeckt — jede Falle ist dokumentiert, samt dem Fehler, der damals dazu führte.
 
@@ -211,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # Batch-Import mit Ergebnisausgabe
 VideoWallpaper --link "https://…"         # Link-Download + Import
 ```
 
-Debug-Umgebungsvariablen stehen in Abschnitt 9 von `技术原理.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU` u. a.).
+Debug-Umgebungsvariablen stehen in Abschnitt 9 von `GUIDE.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU` u. a.).
 
 ---
 
@@ -246,7 +246,7 @@ sonst melden deine Nutzer an den Server des Autors. Dieser Schritt ist nicht fei
 
 Code und Dokumentation stehen unter **GPL-3.0** — siehe [LICENSE](LICENSE). Wer eine geänderte Binärdatei weitergibt, muss den vollständigen zugehörigen Quellcode unter derselben Lizenz bereitstellen.
 
-**Doppellizenzierung:** Für den Einsatz von Dòng in einem quellgeschlossenen kommerziellen Produkt ist eine separate kommerzielle Lizenz erhältlich — siehe [COMMERCIAL.md](COMMERCIAL.md) oder eröffne ein Issue, um den Autor zu kontaktieren.
+**Doppellizenzierung:** Für den Einsatz von Dòng in einem quellgeschlossenen kommerziellen Produkt ist eine separate kommerzielle Lizenz erhältlich — siehe [GUIDE.md](i18n/de/GUIDE.md) oder eröffne ein Issue, um den Autor zu kontaktieren.
 
 > **Hinweis zu älteren Versionen:** v3.31 und früher wurden unter der MIT-Lizenz veröffentlicht. Diese Rechte können nicht widerrufen werden; GPL-3.0 gilt nur für spätere Versionen.
 
@@ -261,7 +261,7 @@ Code und Dokumentation stehen unter **GPL-3.0** — siehe [LICENSE](LICENSE). We
 
 ---
 
-## About
+## Über den Autor
 
 I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
 why a wallpaper couldn't be a moving video, so I wrote one in Swift from

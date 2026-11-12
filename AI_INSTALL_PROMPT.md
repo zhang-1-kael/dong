@@ -1,5 +1,18 @@
 # 让 AI 帮你装 Dòng / Ask an AI to install Dòng for you
 
+> **九种语言 · Nine languages.** 这个根文件是可随手分享的中英双语提示词。
+> 想要「整页都是同一种语言」的版本（提示词 + 安装手册 + 项目文档 + 截图），
+> 从下面选一个：
+> [English](i18n/en/AI_INSTALL_PROMPT.md) · [简体中文](i18n/zh/AI_INSTALL_PROMPT.md) ·
+> [日本語](i18n/ja/AI_INSTALL_PROMPT.md) · [한국어](i18n/ko/AI_INSTALL_PROMPT.md) ·
+> [Français](i18n/fr/AI_INSTALL_PROMPT.md) · [Deutsch](i18n/de/AI_INSTALL_PROMPT.md) ·
+> [Español](i18n/es/AI_INSTALL_PROMPT.md) · [Italiano](i18n/it/AI_INSTALL_PROMPT.md) ·
+> [Русский](i18n/ru/AI_INSTALL_PROMPT.md)
+>
+> Each language page has screenshots, linked documents and the prompt in that
+> language. The copyable prompt itself stays in English so every AI tool can
+> read it, and asks the AI to reply in your language.
+
 把下面任意一段整段复制，粘贴给任何 AI 助手（能执行命令的它会直接装好；
 不能执行命令的它会把最短的三行命令给你）。以后安装方式变了，只需要改仓库里的
 `AI_INSTALL.md`，这段提示词不用换。

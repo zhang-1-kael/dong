@@ -4,12 +4,13 @@
   <p>Turn any video into a living desktop.<br>
   <a href="#features"><strong>Explore Dòng »</strong></a><br><br>
   <a href="#installation">Download for macOS</a> · <a href="https://dongisgood.coze.site/en">Official website ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 Let an AI install it for me (easiest) »</strong></a><br>
+  <a href="i18n/en/AI_INSTALL_PROMPT.md"><strong>🤖 Let an AI install it for me (easiest) »</strong></a><br>
   <i>~ Version 3.31 · macOS 13 and later · Apple Silicon ~</i></p>
   <p>
     <b>English</b> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
+  <p><sub>Everything on this page — screenshots, linked docs and the prompt — is in English.</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,7 +20,7 @@
 > Paste a video link, or drag in a local video: it downloads, trims, and stitches it into a seamless loop, spread across your desktop.
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="i18n/en/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
@@ -38,6 +39,8 @@
 > It downloads the official DMG, verifies the SHA256, installs the app into Applications, and completes macOS's one-time first-open confirmation — from then on a double-click just works.
 >
 > No terminal window for you, no hunting through System Settings.
+>
+> The prompt is written in English on purpose, so every AI tool understands it. Its last line asks the AI to reply in English — so everything you read stays in English.
 
 **① Copy this whole block**
 
@@ -50,11 +53,12 @@ AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.
 
 Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
 Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in English.
 ```
 
 **② Paste it into the AI and let it finish. Leave the app's own first-run "enable live wallpaper?" choice to me.**
 
-📖 More: [full manual for AI agents](AI_INSTALL.md) · [bilingual prompt](AI_INSTALL_PROMPT.md) · [one-shot installer](install.sh) · [manual download](https://dongisgood.coze.site/en)
+📖 More: [full manual for AI agents](i18n/en/AI_INSTALL.md) · [bilingual prompt](i18n/en/AI_INSTALL_PROMPT.md) · [one-shot installer](install.sh) · [manual download](https://dongisgood.coze.site/en) · [All documents in English](i18n/en/GUIDE.md)
 
 ---
 
@@ -81,7 +85,7 @@ A 0.4-second crossfade between ending and opening erases the loop point complete
 A resident menu bar app: current wallpaper, disk usage, online time, paste a link to import — every control hand-drawn in AppKit.
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Dòng menu bar panel">
+  <img src="assets/i18n/en/panel.jpg" width="620" alt="Dòng menu bar panel">
 </p>
 
 ### 📚 Waterfall wallpaper library
@@ -89,7 +93,7 @@ A resident menu bar app: current wallpaper, disk usage, online time, paste a lin
 All wallpapers in a cover grid; hover to preview, click to switch. Volume, playback controls, current frame info — all in one screen.
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Dòng wallpaper library">
+  <img src="assets/i18n/en/library.jpg" width="720" alt="Dòng wallpaper library">
 </p>
 
 ### 🔒 Same frame on Lock Screen
@@ -109,7 +113,7 @@ Download the latest `.dmg` from the [official site](https://dongisgood.coze.site
 The build is ad-hoc signed and not notarized. If macOS says it is damaged, run `xattr -dr com.apple.quarantine "/Applications/Dòng.app"` once, then open it again.
 
 > [!TIP]
-> **Let an AI do it for you.** Copy the prompt in [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) into any AI assistant — it downloads, verifies and installs Dòng in one command.
+> **Let an AI do it for you.** Copy the prompt in [AI_INSTALL_PROMPT.md](i18n/en/AI_INSTALL_PROMPT.md) into any AI assistant — it downloads, verifies and installs Dòng in one command.
 >
 > Prefer to build it yourself? The steps below need only the Xcode command line tools.
 
@@ -190,7 +194,7 @@ Four independent pipelines around a "menu bar app with no window":
 | `LockScreen.swift` | 70 | Grab a frame as the system wallpaper |
 | `Presets.swift` | 47 | First-run import of built-in assets |
 
-**The full technical write-up is in [`技术原理.md`](技术原理.md) (Chinese)**: why the window must be 24pt larger than the screen,
+**The full technical write-up is in [technical guide](i18n/en/GUIDE.md)**: why the window must be 24pt larger than the screen,
 why `--deep` signing is harmful, why loop audio mixing must seek in three segments,
 why the hand-drawn panel covers the frosted glass — every pitfall documented, including what went wrong when it was hit.
 
@@ -207,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # batch import, prints results
 VideoWallpaper --link "https://…"         # link download + import
 ```
 
-Debugging environment variables are in section 9 of `技术原理.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU`, etc.).
+Debugging environment variables are in section 9 of `GUIDE.md` (`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU`, etc.).
 
 ---
 
@@ -242,7 +246,7 @@ otherwise your users will report to the author's server. That step isn't polite,
 
 Code and documentation are licensed under **GPL-3.0** — see [LICENSE](LICENSE). If you distribute a modified binary, you must make the complete corresponding source available under the same license.
 
-**Dual licensing:** To use Dòng in a closed-source commercial product, a separate commercial license is available — see [COMMERCIAL.md](COMMERCIAL.md), or open an issue to contact the author.
+**Dual licensing:** To use Dòng in a closed-source commercial product, a separate commercial license is available — see [GUIDE.md](i18n/en/GUIDE.md), or open an issue to contact the author.
 
 > **Historical note:** v3.31 and earlier were released under the MIT License. Those grants cannot be revoked; GPL-3.0 applies to later versions only.
 

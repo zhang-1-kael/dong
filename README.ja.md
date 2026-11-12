@@ -2,14 +2,15 @@
   <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>どんな動画も、動くデスクトップに。<br>
-  <a href="#features"><strong>Dòng を見る »</strong></a><br><br>
-  <a href="#installation">macOS 版をダウンロード</a> · <a href="https://dongisgood.coze.site/en">公式サイト ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 AI にインストールしてもらう（かんたん） »</strong></a><br>
+  <a href="#機能"><strong>Dòng を見る »</strong></a><br><br>
+  <a href="#インストール">macOS 版をダウンロード</a> · <a href="https://dongisgood.coze.site/en">公式サイト ↗</a><br>
+  <a href="i18n/ja/AI_INSTALL_PROMPT.md"><strong>🤖 AI にインストールしてもらう（かんたん） »</strong></a><br>
   <i>~ バージョン 3.31 · macOS 13 以降 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
+  <p><sub>このページの内容（スクリーンショット・リンク先の文書・プロンプト）はすべて日本語です。</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,16 +20,14 @@
 > 動画のリンクを貼るか、ローカルの動画をドラッグするだけ。ダウンロード、トリミング、継ぎ目のないループへの仕上げまで自動で行い、デスクトップに広げます。
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
+  <a href="i18n/ja/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-%E3%83%A1%E3%83%83%E3%82%BB%E3%83%BC%E3%82%B81%E3%81%A4-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
-
-<a id="features" name="features"></a>
 
 ---
 
@@ -40,23 +39,26 @@
 > 公式サイトから DMG をダウンロードし、SHA256 を検証し、「アプリケーション」にインストールし、macOS の初回起動時の確認も一度で済ませます。あとはダブルクリックで起動できます。
 >
 > ターミナルを開く必要も、システム設定を探す必要もありません。
+>
+> 下のプロンプトは、どの AI ツールでも読めるよう意図的に英語で書いてあります。最後の一行で日本語での返答を指定しているので、あなたが読む文章は日本語のままです。
 
 **① 次のブロックを丸ごとコピー**
 
 ```text
-この Mac に macOS 用ライブ壁紙アプリ Dòng をインストールしてください。
+Please install Dòng, a macOS live wallpaper app, on this Mac.
 
-公式リポジトリ: https://github.com/zhang-1-kael/dong
-公式サイト: https://dongisgood.coze.site/en
-AI 向け手順書: リポジトリ内の AI_INSTALL.md／ワンコマンド版: install.sh
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
 
-まず手順書とスクリプトを読み、その指示に従ってください。公式の安定エンドポイントからダウンロードし、公式 API の SHA256 で検証し、「アプリケーション」に導入し、macOS の初回起動確認を済ませて起動、結果と使い方を報告してください。
-上記の公式ドメインのみを使い、sudo は使わず、ファイルの削除・上書きやシステム全体のセキュリティ設定変更はしないでください。ターミナル権限がない場合は最短のコマンドだけを提示し、インストールしたと見せかけないでください。
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in Japanese.
 ```
 
 **② AI に貼り付けて完了を待つだけ。初回起動時にアプリが出す「ライブ壁紙を有効にしますか」の選択は自分で行います。**
 
-📖 関連ファイル：[AI 向け完全手順書](AI_INSTALL.md) · [プロンプト集](AI_INSTALL_PROMPT.md) · [インストールスクリプト](install.sh) · [公式サイトから手動ダウンロード](https://dongisgood.coze.site/en)
+📖 関連ファイル：[AI 向け完全手順書](i18n/ja/AI_INSTALL.md) · [プロンプト集](i18n/ja/AI_INSTALL_PROMPT.md) · [インストールスクリプト](install.sh) · [公式サイトから手動ダウンロード](https://dongisgood.coze.site/en) · [日本語のドキュメント一覧](i18n/ja/GUIDE.md)
 
 ---
 
@@ -83,7 +85,7 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 常駐するメニューバーアプリ：現在の壁紙、ディスク使用量、オンライン時間、リンクを貼るだけでインポート。すべてのコントロールを AppKit で手描きしています。
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Dòng メニューバーパネル">
+  <img src="assets/i18n/ja/panel.jpg" width="620" alt="Dòng メニューバーパネル">
 </p>
 
 ### 📚 ウォーターフォール壁紙ライブラリ
@@ -91,7 +93,7 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 すべての壁紙をカバーグリッドで展開。ホバーでプレビュー、クリックで切り替え。音量、再生コントロール、現在のフレーム情報を一画面で。
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Dòng 壁紙ライブラリ">
+  <img src="assets/i18n/ja/library.jpg" width="720" alt="Dòng 壁紙ライブラリ">
 </p>
 
 ### 🔗 ロック画面と同じ絵柄
@@ -102,8 +104,6 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 
 ## 使い方
 
-<a id="installation" name="installation"></a>
-
 ### インストール
 
 #### Dòng をダウンロード
@@ -113,7 +113,7 @@ ffmpeg で画面の「動き」を一次元の信号に変換し、信号の変�
 このビルドは ad-hoc 署名で公証されていません。macOS に「壊れている」と言われたら、`xattr -dr com.apple.quarantine "/Applications/Dòng.app"` を一度実行してから開き直してください。
 
 > [!TIP]
-> **手作業が面倒なら AI に任せられます。** [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md) のプロンプトを任意の AI アシスタントに貼り付けるだけで、ダウンロードから検証・インストールまで自動でやってくれます。
+> **手作業が面倒なら AI に任せられます。** [AI_INSTALL_PROMPT.md](i18n/ja/AI_INSTALL_PROMPT.md) のプロンプトを任意の AI アシスタントに貼り付けるだけで、ダウンロードから検証・インストールまで自動でやってくれます。
 >
 > 自分でビルドしたい場合は以下の手順へ。必要なのは Xcode コマンドラインツールだけです。
 
@@ -194,7 +194,7 @@ VW_NO_PRESETS=1 ./package.sh    # 内蔵壁紙なし。DMG が 360 MB 小さく�
 | `LockScreen.swift` | 70 | フレームを切り出してシステム壁紙に設定 |
 | `Presets.swift` | 47 | 内蔵素材の初回インポート |
 
-**技術的な詳細はすべて [`技术原理.md`](技术原理.md)（中国語）**：なぜウィンドウは画面より 24pt 大きくなければならないのか、
+**技術的な詳細はすべて [技術文書](i18n/ja/GUIDE.md)**：なぜウィンドウは画面より 24pt 大きくなければならないのか、
 なぜ `--deep` 署名が有害なのか、なぜループ音声のミックスは三回に分けて seek しなければならないのか、
 なぜ手描きのパネルはすりガラスを覆い隠してしまうのか — 踏んだ落とし穴はすべて記録されています。失敗した時のどこが間違っていたかも含めて。
 
@@ -211,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # まとめてインポートして結
 VideoWallpaper --link "https://…"         # リンクのダウンロード + インポート
 ```
 
-デバッグ用の環境変数は `技术原理.md` の第 9 章を参照（`VW_PANEL_SHOT`、`VW_GEOM`、`VW_DUMP_MENU` など）。
+デバッグ用の環境変数は `GUIDE.md` の第 9 章を参照（`VW_PANEL_SHOT`、`VW_GEOM`、`VW_DUMP_MENU` など）。
 
 ---
 
@@ -246,7 +246,7 @@ CPU アーキテクチャ、言語、イベント名。
 
 コードとドキュメントは **GPL-3.0** の下で公開されています — [LICENSE](LICENSE) を参照。改変したバイナリを配布する場合は、完全な対応ソースコードを同じライセンスで提供する必要があります。
 
-**デュアルライセンス：** Dòng をクローズドソースの商用製品に組み込みたい場合は、別途商用ライセンスをご利用いただけます — [COMMERCIAL.md](COMMERCIAL.md) を参照するか、issue で作者にご連絡ください。
+**デュアルライセンス：** Dòng をクローズドソースの商用製品に組み込みたい場合は、別途商用ライセンスをご利用いただけます — [GUIDE.md](i18n/ja/GUIDE.md) を参照するか、issue で作者にご連絡ください。
 
 > **旧バージョンについて：** v3.31 以前は MIT ライセンスで公開されており、その許諾は取り消せません。GPL-3.0 はそれ以降のバージョンにのみ適用されます。
 
@@ -261,7 +261,7 @@ CPU アーキテクチャ、言語、イベント名。
 
 ---
 
-## About
+## 作者について
 
 I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
 why a wallpaper couldn't be a moving video, so I wrote one in Swift from

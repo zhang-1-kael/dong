@@ -2,14 +2,15 @@
   <img width="225" height="225" src="assets/brandmark-sway.gif" alt="Dòng">
   <h1><b>Dòng</b></h1>
   <p>어떤 영상이든 살아 움직이는 데스크톱으로.<br>
-  <a href="#features"><strong>Dòng 살펴보기 »</strong></a><br><br>
-  <a href="#installation">macOS용 다운로드</a> · <a href="https://dongisgood.coze.site/en">공식 웹사이트 ↗</a><br>
-  <a href="AI_INSTALL_PROMPT.md"><strong>🤖 AI에게 설치 맡기기 (가장 쉬움) »</strong></a><br>
+  <a href="#기능"><strong>Dòng 살펴보기 »</strong></a><br><br>
+  <a href="#설치">macOS용 다운로드</a> · <a href="https://dongisgood.coze.site/en">공식 웹사이트 ↗</a><br>
+  <a href="i18n/ko/AI_INSTALL_PROMPT.md"><strong>🤖 AI에게 설치 맡기기 (가장 쉬움) »</strong></a><br>
   <i>~ 버전 3.31 · macOS 13 이상 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
   </p>
+  <p><sub>이 페이지의 모든 내용(스크린샷, 연결된 문서, 프롬프트)은 한국어입니다.</sub></p>
 </div>
 
 > [!NOTE]
@@ -19,16 +20,14 @@
 > 영상 링크를 붙여넣거나 로컬 영상을 끌어다 놓으면 다운로드하고, 자르고, 이어 붙여 끊김 없는 루프를 만든 뒤 데스크톱에 깔아 줍니다.
 
 <h6 align="center">
-  <a href="AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-One_message-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
-  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
+  <a href="i18n/ko/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-%EB%A9%94%EC%8B%9C%EC%A7%80_%ED%95%98%EB%82%98-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
+  <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
   <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
   <a href="https://github.com/zhang-1-kael/dong/issues"><img src="https://img.shields.io/github/issues/zhang-1-kael/dong?style=for-the-badge&label=Issues&color=ED4245&labelColor=23272A" alt="Issues"></a>
 </h6>
-
-<a id="features" name="features"></a>
 
 ---
 
@@ -40,23 +39,26 @@
 > 공식 사이트에서 DMG를 내려받고 SHA256을 검증한 뒤 «응용 프로그램»에 설치하고, macOS의 최초 실행 확인도 한 번에 마쳐 줍니다. 이후에는 더블클릭만 하면 열립니다.
 >
 > 터미널을 열거나 시스템 설정을 뒤질 필요가 전혀 없습니다.
+>
+> 아래 프롬프트는 어떤 AI 도구든 읽을 수 있도록 일부러 영어로 작성했습니다. 마지막 줄에서 한국어로 답하라고 지정하므로, 여러분이 읽는 내용은 여전히 한국어입니다.
 
 **① 아래 블록 전체 복사**
 
 ```text
-이 Mac에 macOS 라이브 배경화면 앱 Dòng을 설치해 주세요.
+Please install Dòng, a macOS live wallpaper app, on this Mac.
 
-공식 저장소: https://github.com/zhang-1-kael/dong
-공식 사이트: https://dongisgood.coze.site/en
-AI용 설치 안내: 저장소의 AI_INSTALL.md / 원클릭 스크립트: install.sh
+Official repo: https://github.com/zhang-1-kael/dong
+Official site: https://dongisgood.coze.site/en
+AI installation manual: AI_INSTALL.md in that repo; one-shot installer: install.sh
 
-먼저 안내 문서와 스크립트를 읽고 그 지시를 따르세요. 공식 안정 엔드포인트에서 내려받고, 공식 API의 SHA256으로 검증하고, /Applications에 설치하고, macOS 최초 실행 확인을 마친 뒤 실행하고 결과와 사용법을 알려 주세요.
-위 공식 도메인만 사용하고, sudo를 쓰지 말고, 내 파일을 삭제·덮어쓰기하거나 시스템 전체 보안 설정을 바꾸지 마세요. 터미널 권한이 없다면 복사 가능한 가장 짧은 명령만 알려 주고 설치했다고 하지 마세요.
+Please read the manual and the script first, then follow the manual: download from the official stable endpoint, verify the SHA256 from the official release endpoint, install into /Applications, complete macOS's one-time first-open confirmation, launch the app, and report the result plus how to use it.
+Use only the official hosts above; no sudo, no deleting or overwriting my files, no changes to system-wide security settings. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply to me in Korean.
 ```
 
 **② AI에 붙여넣고 기다리기만 하면 됩니다. 첫 실행 시 앱이 묻는 «라이브 배경화면 켤까요?» 선택은 제가 직접 할게요.**
 
-📖 관련 파일: [AI용 전체 안내](AI_INSTALL.md) · [프롬프트 모음](AI_INSTALL_PROMPT.md) · [원클릭 스크립트](install.sh) · [공식 사이트에서 직접 받기](https://dongisgood.coze.site/en)
+📖 관련 파일: [AI용 전체 안내](i18n/ko/AI_INSTALL.md) · [프롬프트 모음](i18n/ko/AI_INSTALL_PROMPT.md) · [원클릭 스크립트](install.sh) · [공식 사이트에서 직접 받기](https://dongisgood.coze.site/en) · [한국어 문서 모음](i18n/ko/GUIDE.md)
 
 ---
 
@@ -83,7 +85,7 @@ ffmpeg가 화면의 움직임을 1차원 신호로 바꾸고, 신호가 튀는 �
 메뉴 막대에 상주하는 앱입니다. 현재 배경화면, 디스크 사용량, 접속 시간, 링크 붙여넣기까지 — 모든 컨트롤을 AppKit으로 직접 그렸습니다.
 
 <p align="center">
-  <img src="assets/panel.jpg" width="620" alt="Dòng 메뉴 막대 패널">
+  <img src="assets/i18n/ko/panel.jpg" width="620" alt="Dòng 메뉴 막대 패널">
 </p>
 
 ### 📚 워터폴 배경화면 라이브러리
@@ -91,7 +93,7 @@ ffmpeg가 화면의 움직임을 1차원 신호로 바꾸고, 신호가 튀는 �
 모든 배경화면을 표지 격자로 보여 줍니다. 마우스를 올리면 미리보기, 클릭하면 전환. 볼륨, 재생 조작, 현재 프레임 정보까지 한 화면에 담았습니다.
 
 <p align="center">
-  <img src="assets/library-wide.jpg" width="720" alt="Dòng 배경화면 라이브러리">
+  <img src="assets/i18n/ko/library.jpg" width="720" alt="Dòng 배경화면 라이브러리">
 </p>
 
 ### 🔒 잠금 화면에도 같은 장면
@@ -102,8 +104,6 @@ ffmpeg가 화면의 움직임을 1차원 신호로 바꾸고, 신호가 튀는 �
 
 ## 사용법
 
-<a id="installation" name="installation"></a>
-
 ### 설치
 
 #### Dòng 다운로드
@@ -113,7 +113,7 @@ ffmpeg가 화면의 움직임을 1차원 신호로 바꾸고, 신호가 튀는 �
 이 빌드는 ad-hoc 서명이라 공증되지 않았습니다. macOS가 «손상됨»이라고 하면 `xattr -dr com.apple.quarantine "/Applications/Dòng.app"`을 한 번 실행한 뒤 다시 여세요.
 
 > [!TIP]
-> **직접 하기 귀찮다면 AI에 맡기세요.** [AI_INSTALL_PROMPT.md](AI_INSTALL_PROMPT.md)의 프롬프트를 아무 AI 도구에 붙여넣으면 다운로드·검증·설치를 한 번에 해 줍니다.
+> **직접 하기 귀찮다면 AI에 맡기세요.** [AI_INSTALL_PROMPT.md](i18n/ko/AI_INSTALL_PROMPT.md)의 프롬프트를 아무 AI 도구에 붙여넣으면 다운로드·검증·설치를 한 번에 해 줍니다.
 >
 > 직접 빌드하려면 아래 단계를 따르세요. Xcode 명령줄 도구만 있으면 됩니다.
 
@@ -194,7 +194,7 @@ VW_NO_PRESETS=1 ./package.sh    # 기본 제공 배경화면 제외, DMG가 360 
 | `LockScreen.swift` | 70 | 한 프레임을 시스템 배경화면으로 잡기 |
 | `Presets.swift` | 47 | 기본 제공 자료의 최초 가져오기 |
 
-**전체 기술 설명은 [`技术原理.md`](技术原理.md)(중국어)에 있습니다**: 창을 화면보다 24pt 크게 만들어야 하는 이유,
+**전체 기술 설명은 [기술 문서](i18n/ko/GUIDE.md)에 있습니다**: 창을 화면보다 24pt 크게 만들어야 하는 이유,
 `--deep` 서명이 왜 해로운지, 루프 오디오 믹싱이 왜 세 구간으로 나눠 탐색해야 하는지,
 직접 그린 패널이 반투명 유리를 덮어야 하는 이유까지 — 실제로 겪었던 실수와 함께 모든 함정을 기록해 두었습니다.
 
@@ -211,7 +211,7 @@ VideoWallpaper --import a.mp4 b.mp4       # 일괄 가져오기, 결과 출력
 VideoWallpaper --link "https://…"         # 링크 다운로드 + 가져오기
 ```
 
-디버깅 환경 변수는 `技术原理.md`의 9절에 있습니다(`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU` 등).
+디버깅 환경 변수는 `GUIDE.md`의 9절에 있습니다(`VW_PANEL_SHOT`, `VW_GEOM`, `VW_DUMP_MENU` 등).
 
 ---
 
@@ -246,7 +246,7 @@ CPU 아키텍처, 언어, 이벤트 이름.
 
 코드와 문서는 **GPL-3.0** 라이선스를 따릅니다 — [LICENSE](LICENSE) 참고. 수정한 바이너리를 배포할 때는 완전한 대응 소스 코드를 동일한 라이선스로 제공해야 합니다.
 
-**이중 라이선스:** Dòng을 클로즈드 소스 상용 제품에 사용하려면 별도의 상용 라이선스가 필요합니다 — [COMMERCIAL.md](COMMERCIAL.md)를 보거나 이슈로 작성자에게 문의하세요.
+**이중 라이선스:** Dòng을 클로즈드 소스 상용 제품에 사용하려면 별도의 상용 라이선스가 필요합니다 — [GUIDE.md](i18n/ko/GUIDE.md)를 보거나 이슈로 작성자에게 문의하세요.
 
 > **이전 버전 안내:** v3.31 이하는 MIT 라이선스로 공개되었으며 해당 허가는 철회할 수 없습니다. GPL-3.0은 그 이후 버전에만 적용됩니다.
 
@@ -260,7 +260,7 @@ CPU 아키텍처, 언어, 이벤트 이름.
 
 ---
 
-## About
+## 소개
 
 I'm a 16-year-old high school sophomore. Dòng started as a whim — I wondered
 why a wallpaper couldn't be a moving video, so I wrote one in Swift from
