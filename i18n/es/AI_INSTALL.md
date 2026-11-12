@@ -14,7 +14,7 @@
 
 ## Reglas que no se pueden romper
 
-- **GitHub Releases puede estar vacío.** No envíes allí al usuario ni inventes una URL de asset.
+- **GitHub Releases ya tiene la v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` y el paquete completo de la versión. Úsalo como alternativa si el sitio oficial falla; verifica siempre el SHA256. No inventes URLs de otras versiones.
 - **No fijes la URL del almacenamiento de objetos.** `/api/download` redirige a una URL firmada que caduca.
 - **El DMG tiene firma ad-hoc y no está notarizado.** Limpiar `com.apple.quarantine` es normal; nunca desactives Gatekeeper globalmente.
 - **Nada de `sudo`, ni borrar/sobrescribir archivos, ni `curl | bash`.** Lee el script antes.

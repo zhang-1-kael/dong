@@ -14,7 +14,7 @@
 
 ## Rules you must not break
 
-- **GitHub Releases may be empty.** Never send the user there or invent an asset URL.
+- **GitHub Releases hosts v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` plus a full release bundle. Use it as a fallback if the official site is down; always verify the SHA256. Never invent asset URLs for other versions.
 - **Never hardcode the object-storage URL.** `/api/download` redirects to a signed URL that expires.
 - **The DMG is ad-hoc signed and not notarized.** Clearing `com.apple.quarantine` is expected; never disable Gatekeeper system-wide.
 - **No `sudo`, no deleting or overwriting user files, no `curl | bash`.** Read the script first.

@@ -81,7 +81,7 @@ T = {
 | Stable DMG endpoint | `{{STABLE}}` |
 | Version + SHA256 | `{{META_URL}}` |
 | One-shot installer | `{{RAW}}` |"""),
-            ("Rules you must not break", """- **GitHub Releases may be empty.** Never send the user there or invent an asset URL.
+            ("Rules you must not break", """- **GitHub Releases hosts v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` plus a full release bundle. Use it as a fallback if the official site is down; always verify the SHA256. Never invent asset URLs for other versions.
 - **Never hardcode the object-storage URL.** `/api/download` redirects to a signed URL that expires.
 - **The DMG is ad-hoc signed and not notarized.** Clearing `com.apple.quarantine` is expected; never disable Gatekeeper system-wide.
 - **No `sudo`, no deleting or overwriting user files, no `curl | bash`.** Read the script first.
@@ -144,7 +144,7 @@ Full Chinese technical write-up: [技术原理.md](../../技术原理.md)."""),
 | 稳定下载入口 | `{{STABLE}}` |
 | 版本与 SHA256 | `{{META_URL}}` |
 | 一键安装脚本 | `{{RAW}}` |"""),
-            ("必须遵守", """- **GitHub Releases 可能是空的。** 不要让用户去那里，也不要编造安装包地址。
+            ("必须遵守", """- **GitHub Releases 已发布 v3.31**（`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`）：`Dong-3.31.dmg` 与完整发布包。官网打不开时可作为备用入口，仍要核对 SHA256；不要编造其它版本的下载地址。
 - **不要硬编码对象存储直链。** `/api/download` 会 302 到带签名的临时链接，很快过期。
 - **安装包是 ad-hoc 签名、未经 Apple 公证。** 清除 `com.apple.quarantine` 是正常步骤，不要全局关闭 Gatekeeper。
 - **不要 `sudo`、不要删除或覆盖用户文件、不要 `curl | bash`。** 先读脚本再执行。
@@ -207,7 +207,7 @@ Full Chinese technical write-up: [技术原理.md](../../技术原理.md)."""),
 | 安定版 DMG | `{{STABLE}}` |
 | バージョンと SHA256 | `{{META_URL}}` |
 | ワンコマンド導入スクリプト | `{{RAW}}` |"""),
-            ("守るべきルール", """- **GitHub Releases は空のことがあります。** ユーザーをそこへ誘導せず、アセット URL を作らないでください。
+            ("守るべきルール", """- **GitHub Releases に v3.31 が公開されています**（`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`）：`Dong-3.31.dmg` と完全なリリースバンドル。公式サイトが使えない時の予備として使い、SHA256 は必ず検証してください。他のバージョンのアセット URL を作らないでください。
 - **オブジェクトストレージの直リンクを固定しないでください。** `/api/download` は期限付き署名 URL へリダイレクトします。
 - **DMG は ad-hoc 署名で公証されていません。** `com.apple.quarantine` の解除は想定内です。Gatekeeper をシステム全体で無効化してはいけません。
 - **`sudo`、ユーザーファイルの削除・上書き、`curl | bash` は禁止。** まずスクリプトを読んでください。
@@ -270,7 +270,7 @@ Full Chinese technical write-up: [技术原理.md](../../技术原理.md)."""),
 | 안정판 DMG | `{{STABLE}}` |
 | 버전 및 SHA256 | `{{META_URL}}` |
 | 한 번에 설치하는 스크립트 | `{{RAW}}` |"""),
-            ("반드시 지킬 것", """- **GitHub Releases 가 비어 있을 수 있습니다.** 사용자를 그곳으로 보내거나 파일 URL 을 만들어 내지 마세요.
+            ("반드시 지킬 것", """- **GitHub Releases 에 v3.31 이 공개되어 있습니다** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` 와 전체 릴리스 번들. 공식 사이트가 안 될 때 예비로 쓰고 SHA256 을 반드시 확인하세요. 다른 버전의 에셋 URL 을 만들어 내지 마세요.
 - **오브젝트 스토리지 직링크를 고정하지 마세요.** `/api/download` 는 만료되는 서명 URL 로 리다이렉트합니다.
 - **DMG 는 ad-hoc 서명이며 공증되지 않았습니다.** `com.apple.quarantine` 제거는 정상 절차입니다. Gatekeeper 를 시스템 전체에서 끄지 마세요.
 - **`sudo` 금지, 사용자 파일 삭제·덮어쓰기 금지, `curl | bash` 금지.** 먼저 스크립트를 읽으세요.
@@ -333,7 +333,7 @@ Full Chinese technical write-up: [技术原理.md](../../技术原理.md)."""),
 | DMG stable | `{{STABLE}}` |
 | Version + SHA256 | `{{META_URL}}` |
 | Script d'installation | `{{RAW}}` |"""),
-            ("Règles à ne pas enfreindre", """- **Les GitHub Releases peuvent être vides.** N'y envoyez jamais l'utilisateur et n'inventez pas d'URL d'asset.
+            ("Règles à ne pas enfreindre", """- **Les GitHub Releases hébergent la v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`) : `Dong-3.31.dmg` et l'archive complète. À utiliser en repli si le site officiel est indisponible ; vérifiez toujours le SHA256. N'inventez pas d'URL pour d'autres versions.
 - **Ne codez jamais l'URL de stockage en dur.** `/api/download` redirige vers une URL signée qui expire.
 - **Le DMG est signé ad-hoc et non notarisé.** Effacer `com.apple.quarantine` est normal ; ne désactivez jamais Gatekeeper globalement.
 - **Pas de `sudo`, ni suppression/écrasement de fichiers, ni `curl | bash`.** Lisez d'abord le script.
@@ -396,7 +396,7 @@ Texte technique complet en chinois : [技术原理.md](../../技术原理.md).""
 | Stabile DMG-URL | `{{STABLE}}` |
 | Version + SHA256 | `{{META_URL}}` |
 | Installationsskript | `{{RAW}}` |"""),
-            ("Regeln, die nicht gebrochen werden dürfen", """- **GitHub Releases können leer sein.** Schicke niemanden dorthin und erfinde keine Asset-URL.
+            ("Regeln, die nicht gebrochen werden dürfen", """- **Auf GitHub Releases liegt v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` und das komplette Release-Bundle. Als Ausweichweg, wenn die Website nicht erreichbar ist; SHA256 immer prüfen. Keine Asset-URLs für andere Versionen erfinden.
 - **Die Object-Storage-URL nie fest codieren.** `/api/download` leitet auf eine signierte URL weiter, die abläuft.
 - **Das DMG ist ad-hoc signiert und nicht notarisiert.** `com.apple.quarantine` zu entfernen ist normal; Gatekeeper darf nie systemweit deaktiviert werden.
 - **Kein `sudo`, keine gelöschten oder überschriebenen Dateien, kein `curl | bash`.** Erst das Skript lesen.
@@ -459,7 +459,7 @@ Vollständige technische Ausführung auf Chinesisch: [技术原理.md](../../技
 | DMG estable | `{{STABLE}}` |
 | Versión + SHA256 | `{{META_URL}}` |
 | Script de instalación | `{{RAW}}` |"""),
-            ("Reglas que no se pueden romper", """- **GitHub Releases puede estar vacío.** No envíes allí al usuario ni inventes una URL de asset.
+            ("Reglas que no se pueden romper", """- **GitHub Releases ya tiene la v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` y el paquete completo de la versión. Úsalo como alternativa si el sitio oficial falla; verifica siempre el SHA256. No inventes URLs de otras versiones.
 - **No fijes la URL del almacenamiento de objetos.** `/api/download` redirige a una URL firmada que caduca.
 - **El DMG tiene firma ad-hoc y no está notarizado.** Limpiar `com.apple.quarantine` es normal; nunca desactives Gatekeeper globalmente.
 - **Nada de `sudo`, ni borrar/sobrescribir archivos, ni `curl | bash`.** Lee el script antes.
@@ -522,7 +522,7 @@ Artículo técnico completo en chino: [技术原理.md](../../技术原理.md)."
 | DMG stabile | `{{STABLE}}` |
 | Versione + SHA256 | `{{META_URL}}` |
 | Script di installazione | `{{RAW}}` |"""),
-            ("Regole da non infrangere", """- **Le GitHub Releases possono essere vuote.** Non mandarci l'utente e non inventare un URL dell'asset.
+            ("Regole da non infrangere", """- **GitHub Releases ospita la v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` e il bundle completo. Usalo come ripiego se il sito ufficiale non è raggiungibile; verifica sempre lo SHA256. Non inventare URL per altre versioni.
 - **Non fissare l'URL dell'object storage.** `/api/download` reindirizza a un URL firmato che scade.
 - **Il DMG ha firma ad-hoc e non è notarizzato.** Rimuovere `com.apple.quarantine` è normale; non disattivare Gatekeeper a livello di sistema.
 - **Niente `sudo`, né cancellazione/sovrascrittura di file, né `curl | bash`.** Leggi prima lo script.
@@ -585,7 +585,7 @@ Approfondimento tecnico completo in cinese: [技术原理.md](../../技术原理
 | Стабильная ссылка на DMG | `{{STABLE}}` |
 | Версия и SHA256 | `{{META_URL}}` |
 | Скрипт установки | `{{RAW}}` |"""),
-            ("Правила, которые нельзя нарушать", """- **GitHub Releases может быть пустым.** Не отправляйте туда пользователя и не выдумывайте URL файла.
+            ("Правила, которые нельзя нарушать", """- **На GitHub Releases выложена v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` и полный архив релиза. Используйте как запасной путь, если сайт недоступен; всегда проверяйте SHA256. Не выдумывайте URL других версий.
 - **Не задавайте прямую ссылку объектного хранилища.** `/api/download` перенаправляет на подписанную ссылку с истекающим сроком.
 - **DMG подписан ad-hoc и не нотаризован.** Удаление `com.apple.quarantine` — штатный шаг; не отключайте Gatekeeper для всей системы.
 - **Никаких `sudo`, удаления или перезаписи файлов, никакого `curl | bash`.** Сначала прочитайте скрипт.

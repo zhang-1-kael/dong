@@ -14,7 +14,7 @@
 
 ## 반드시 지킬 것
 
-- **GitHub Releases 가 비어 있을 수 있습니다.** 사용자를 그곳으로 보내거나 파일 URL 을 만들어 내지 마세요.
+- **GitHub Releases 에 v3.31 이 공개되어 있습니다** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`): `Dong-3.31.dmg` 와 전체 릴리스 번들. 공식 사이트가 안 될 때 예비로 쓰고 SHA256 을 반드시 확인하세요. 다른 버전의 에셋 URL 을 만들어 내지 마세요.
 - **오브젝트 스토리지 직링크를 고정하지 마세요.** `/api/download` 는 만료되는 서명 URL 로 리다이렉트합니다.
 - **DMG 는 ad-hoc 서명이며 공증되지 않았습니다.** `com.apple.quarantine` 제거는 정상 절차입니다. Gatekeeper 를 시스템 전체에서 끄지 마세요.
 - **`sudo` 금지, 사용자 파일 삭제·덮어쓰기 금지, `curl | bash` 금지.** 먼저 스크립트를 읽으세요.

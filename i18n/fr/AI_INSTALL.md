@@ -14,7 +14,7 @@
 
 ## Règles à ne pas enfreindre
 
-- **Les GitHub Releases peuvent être vides.** N'y envoyez jamais l'utilisateur et n'inventez pas d'URL d'asset.
+- **Les GitHub Releases hébergent la v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`) : `Dong-3.31.dmg` et l'archive complète. À utiliser en repli si le site officiel est indisponible ; vérifiez toujours le SHA256. N'inventez pas d'URL pour d'autres versions.
 - **Ne codez jamais l'URL de stockage en dur.** `/api/download` redirige vers une URL signée qui expire.
 - **Le DMG est signé ad-hoc et non notarisé.** Effacer `com.apple.quarantine` est normal ; ne désactivez jamais Gatekeeper globalement.
 - **Pas de `sudo`, ni suppression/écrasement de fichiers, ni `curl | bash`.** Lisez d'abord le script.

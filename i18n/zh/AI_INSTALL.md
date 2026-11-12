@@ -14,7 +14,7 @@
 
 ## 必须遵守
 
-- **GitHub Releases 可能是空的。** 不要让用户去那里，也不要编造安装包地址。
+- **GitHub Releases 已发布 v3.31**（`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`）：`Dong-3.31.dmg` 与完整发布包。官网打不开时可作为备用入口，仍要核对 SHA256；不要编造其它版本的下载地址。
 - **不要硬编码对象存储直链。** `/api/download` 会 302 到带签名的临时链接，很快过期。
 - **安装包是 ad-hoc 签名、未经 Apple 公证。** 清除 `com.apple.quarantine` 是正常步骤，不要全局关闭 Gatekeeper。
 - **不要 `sudo`、不要删除或覆盖用户文件、不要 `curl | bash`。** 先读脚本再执行。
