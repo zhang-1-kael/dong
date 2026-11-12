@@ -39,7 +39,9 @@ Repo: <https://github.com/zhang-1-kael/dong> · Site: <https://dongisgood.coze.s
   `uv run --with pillow python tools/gen_i18n_images.py`.
 - The copyable prompt in every README is English **on purpose** — any AI tool
   can read it — and ends with `Reply to me in <language>.` Always answer in that
-  language. Localized alternative prompts are frozen in
+  language. If no language is named, detect the user's system language
+  (`defaults read -g AppleLanguages`) and reply in it; fall back to English for
+  unsupported languages. Localized alternative prompts are frozen in
   `tools/i18n_local_prompts.json`; this file and the root `AI_INSTALL.md` stay
   in English because they are machine-facing.
 - AI-assisted contributions: disclose and review line by line (`AI_POLICY.md`).

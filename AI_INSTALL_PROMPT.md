@@ -40,6 +40,7 @@ three-line command instead.
 5. 装好后告诉我结果，以及怎么用（菜单栏果冻图标 → 点开面板 → 粘贴 B 站 / YouTube 链接）。
 
 安全要求：只用上面这几个官方域名；不要 sudo；不要删除或覆盖我的文件；校验和不匹配就停下来告诉我；每一步先说明你要做什么再执行。如果你没有终端权限，就直接给我可以复制的最短命令，不要假装已经装好了。
+请全程用我这台 Mac 设置的系统语言跟我交流（可以用 `defaults read -g AppleLanguages` 查看主语言；如果是其他语言就换成那种语言）。
 ```
 
 ## English (copy this whole block)
@@ -59,6 +60,7 @@ Follow the manual:
 5. When done, tell me the result and how to use it (jelly icon in the menu bar → open the panel → paste a Bilibili / YouTube link).
 
 Safety: use only the official hosts above; no sudo; do not delete or overwrite my files; stop and tell me if the checksum mismatches; explain each step before running it. If you have no terminal access, just give me the shortest copy-pasteable commands — do not claim you installed anything.
+Reply in the language my Mac is set to — detect it (e.g. `defaults read -g AppleLanguages`) and answer in that language throughout.
 ```
 
 ---

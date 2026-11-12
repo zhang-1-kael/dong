@@ -41,6 +41,13 @@ the project guide all live in `i18n/<lang>/`. This file and `AGENTS.md` stay in
 English because they are read by AI agents, not humans. `install.sh` prints its
 log in English too — summarise the result for the user in their language.
 
+If the prompt that reached you does **not** name a language, adapt to the user's
+system language yourself. On macOS, read the primary language with
+`defaults read -g AppleLanguages | head -1` (or `locale` in a shell); reply,
+summarise and explain in that language. Supported languages: English, 简体中文,
+日本語, 한국어, Français, Deutsch, Español, Italiano, Русский. If the system
+language is none of these, fall back to English.
+
 ## Path A — you have a shell (preferred)
 
 1. Fetch the installer **and read it before running it**. Never `curl | bash`.
