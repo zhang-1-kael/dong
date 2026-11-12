@@ -11,12 +11,16 @@
 | Official repo | `https://github.com/zhang-1-kael/dong` |
 | Official site | `https://dongisgood.coze.site/en` (English), `/` (Chinese) |
 | Stable DMG endpoint | `https://dongisgood.coze.site/api/download?channel=stable` |
+| GitHub Releases (fallback) | `https://github.com/zhang-1-kael/dong/releases/tag/v3.31` → `Dong-3.31.dmg` + full release bundle zip |
 | Release metadata | `https://dongisgood.coze.site/api/update/check?version=0&channel=stable` → JSON with `version`, `file_size`, `sha256`, `download_url` |
 | Installer script | `https://raw.githubusercontent.com/zhang-1-kael/dong/main/install.sh` |
 | Handy prompt to share | `AI_INSTALL_PROMPT.md` |
 
-- **GitHub Releases may be empty.** Do not send the user to the Releases page, and
-  do not invent a release asset URL. The build is distributed from the official site.
+- **GitHub Releases now hosts v3.31** — `https://github.com/zhang-1-kael/dong/releases/tag/v3.31`,
+  with `Dong-3.31.dmg` and a full release bundle zip (`latest.json` + checksum info).
+  Use it as a fallback when the official site is unavailable; always verify the SHA256
+  from the release notes or `latest.json`. The primary channel is still the stable endpoint below.
+  Do not invent asset URLs for versions that have no release.
 - **Never hardcode the object-storage URL.** `/api/download` 302-redirects to a
   signed URL that expires. Always start from the stable endpoint above.
 - **The DMG is ad-hoc signed and NOT notarized.** Gatekeeper will say the app is

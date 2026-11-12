@@ -10,7 +10,9 @@ Repo: <https://github.com/zhang-1-kael/dong> · Site: <https://dongisgood.coze.s
 
 - Official stable DMG endpoint: `https://dongisgood.coze.site/api/download?channel=stable`
   (release metadata / SHA256: `/api/update/check?version=0&channel=stable`).
-- **GitHub Releases may be empty.** Never send the user there or invent an asset URL.
+- **GitHub Releases hosts v3.31** (`https://github.com/zhang-1-kael/dong/releases/tag/v3.31`):
+  `Dong-3.31.dmg` + full bundle zip. Fine as a fallback if the site is down — verify SHA256.
+  Never invent asset URLs for versions without a release.
 - The DMG is ad-hoc signed and **not notarized**; clear `com.apple.quarantine` on the
   installed app. Never disable Gatekeeper system-wide.
 - One-shot installer: `install.sh` — read it before running, never `curl | bash`.
