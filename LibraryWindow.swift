@@ -277,6 +277,8 @@ final class WallpaperCard: NSView {
     var onReveal: (() -> Void)?
     /// 开始悬停时通知外面，让别的卡片先收起来（同一时刻只允许一张卡是悬停态）
     var onHoverStart: (() -> Void)?
+    /// 右下角微调按钮：点了就只调这一张
+    var onTune: (() -> Void)?
 
     private let thumbWrap = NSView()
     private let media = MediaView()
@@ -284,6 +286,7 @@ final class WallpaperCard: NSView {
     private let nameLabel = NSTextField(labelWithString: "")
     private let metaLabel = NSTextField(labelWithString: "")
     private let deleteButton = NSButton()
+    private let tuneButton = NSButton()
     private let badge = NSView()
     private let badgeLabel = NSTextField(labelWithString: "正在使用")
 
@@ -342,6 +345,20 @@ final class WallpaperCard: NSView {
         deleteButton.action = #selector(deleteTapped)
         addSubview(deleteButton)
 
+        // 右下角微调（跟删除同款：只在悬停时出现）。点了开微调弹层、就调这一张
+        tuneButton.isBordered = false
+        tuneButton.wantsLayer = true
+        tuneButton.layer?.cornerRadius = 11
+        tuneButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
+        tuneButton.image = NSImage(systemSymbolName: "slider.horizontal.3",
+                                   accessibilityDescription: "微调这张")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .bold))
+        tuneButton.contentTintColor = .white
+        tuneButton.isHidden = true
+        tuneButton.target = self
+        tuneButton.action = #selector(tuneTapped)
+        addSubview(tuneButton)
+
         // 左上角「正在使用」
         badge.wantsLayer = true
         badge.layer?.cornerRadius = 7
@@ -376,10 +393,11 @@ final class WallpaperCard: NSView {
         media.frame = thumbWrap.bounds
         media.needsLayout = true
         let pad: CGFloat = 12
-        metaLabel.frame = NSRect(x: pad, y: pad, width: max(0, w - pad * 2), height: 14)
+        metaLabel.frame = NSRect(x: pad, y: pad, width: max(0, w - pad * 2 - 26), height: 14)
         nameLabel.frame = NSRect(x: pad, y: pad + 15, width: max(0, w - pad * 2), height: 18)
         shade.frame = NSRect(x: 0, y: 0, width: w, height: min(h, 148))
         deleteButton.frame = NSRect(x: w - 30, y: h - 30, width: 22, height: 22)
+        tuneButton.frame = NSRect(x: w - 30, y: 8, width: 22, height: 22)
 
         let bw = ceil(badgeLabel.intrinsicContentSize.width) + 18
         badge.frame = NSRect(x: 10, y: h - 30, width: bw, height: 20)
@@ -422,6 +440,7 @@ final class WallpaperCard: NSView {
             metaLabel.animator().alphaValue = 1
         }
         deleteButton.isHidden = false
+        tuneButton.isHidden = false
         thumbWrap.layer?.borderWidth = 1
         thumbWrap.layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
 
@@ -451,6 +470,7 @@ final class WallpaperCard: NSView {
             metaLabel.animator().alphaValue = 0
         }
         deleteButton.isHidden = true
+        tuneButton.isHidden = true
         thumbWrap.layer?.borderWidth = 0
         stopPlayback()
     }
@@ -471,6 +491,7 @@ final class WallpaperCard: NSView {
         nameLabel.alphaValue = 1
         metaLabel.alphaValue = 1
         deleteButton.isHidden = false
+        tuneButton.isHidden = false
         thumbWrap.layer?.borderWidth = 1
         thumbWrap.layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
         let item = AVPlayerItem(url: url)
@@ -532,6 +553,9 @@ final class WallpaperCard: NSView {
     @objc private func applyTapped() { onApply?() }
     @objc private func revealTapped() { onReveal?() }
     @objc private func deleteTapped() { onDelete?() }
+    /// 微调弹层的锚点：锚在按钮上，箭头正好指着它
+    var tuneAnchor: NSView { tuneButton }
+    @objc private func tuneTapped() { onTune?() }
 }
 
 // MARK: - 瀑布流容器
@@ -540,6 +564,8 @@ final class GalleryView: NSView {
     var onApply: ((Int) -> Void)?
     var onDelete: ((Int) -> Void)?
     var onReveal: ((Int) -> Void)?
+    /// (卡片序号, 锚点视图)：控制器拿来切壁纸 + 开微调弹层
+    var onTune: ((Int, NSView) -> Void)?
 
     private var cards: [WallpaperCard] = []
     private var urls: [URL] = []
@@ -609,6 +635,10 @@ final class GalleryView: NSView {
         card.onApply = { [weak self, weak card] in
             guard let self, let card, let i = self.cards.firstIndex(where: { $0 === card }) else { return }
             self.onApply?(i)
+        }
+        card.onTune = { [weak self, weak card] in
+            guard let self, let card, let i = self.cards.firstIndex(where: { $0 === card }) else { return }
+            self.onTune?(i, card.tuneAnchor)
         }
         card.onDelete = { [weak self, weak card] in
             guard let self, let card, let i = self.cards.firstIndex(where: { $0 === card }) else { return }
@@ -1417,6 +1447,18 @@ enum LibraryBackdrop {
 
     /// 画的时候用的涂层浓度 = 1 - 透明度
     static var frost: CGFloat { 1 - transparency }
+
+    /// 壁纸库窗口深浅色。默认深色（照录屏定的）；底栏那枚磁贴切换，
+    /// 切完广播 `changed`：外壳按新色重画涂层，控制器把窗口外观一起换掉。
+    private static let darkKey = "VWLibraryDarkMode"
+
+    static var darkMode: Bool {
+        get { (UserDefaults.standard.object(forKey: darkKey) as? Bool) ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: darkKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
 }
 
 // MARK: - 接收拖拽的外壳
@@ -1431,8 +1473,8 @@ final class ShellView: NSView {
 
     /// 涂层浓度（上、下）只由 frost 决定：frost 0 → 2%，frost 1 → 88%。
     ///
-    /// **亮暗都用深色玻璃**：亮色模式下铺一层白雾只会把桌面糊成一片灰，越透越脏；
-    /// 深色玻璃才是"透出来但压得住"，缩略图也才浮得起来。这条是照用户给的录屏定的，别再改回按亮暗分色。
+    /// 深浅两套涂层：深色（默认，照录屏定的）用黑玻璃，"透出来但压得住"；
+    /// 浅色用白雾，给喜欢亮底的用户——底栏那枚「深色/浅色」磁贴切换，别再写死一种。
     private static func matteAlphas(frost: CGFloat) -> (top: CGFloat, bottom: CGFloat) {
         let mid = 0.02 + 0.86 * frost
         // 只够分出上下，不构成高光——玻璃面不该反光
@@ -1503,7 +1545,7 @@ final class ShellView: NSView {
         let path = NSBezierPath(roundedRect: bounds, xRadius: Self.radius, yRadius: Self.radius)
         let frost = LibraryBackdrop.frost
         let alphas = Self.matteOverride ?? Self.matteAlphas(frost: frost)
-        let base = NSColor.black
+        let base = LibraryBackdrop.darkMode ? NSColor.black : NSColor.white
         let top = base.withAlphaComponent(alphas.top)
         let bottom = base.withAlphaComponent(alphas.bottom)
         // 单向极淡的渐变只为让窗口有上下之分，不是高光——玻璃面不该反光
@@ -1802,6 +1844,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var dropTarget: ShellView!
     private weak var shell: NSView?
     private var dockTip: DockTip?
+    private var appearanceObserver: NSObjectProtocol?
 
     init(delegate: WallpaperLibraryDelegate) {
         self.delegate = delegate
@@ -1823,6 +1866,20 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let restored = win.setFrameUsingName("VWLibraryWindow")
         win.setFrameAutosaveName("VWLibraryWindow")
         if !restored { win.center() }
+        appearanceObserver = NotificationCenter.default.addObserver(
+            forName: LibraryBackdrop.changed, object: nil, queue: .main
+        ) { [weak self] _ in self?.applyWindowAppearance() }
+    }
+
+    deinit {
+        if let appearanceObserver { NotificationCenter.default.removeObserver(appearanceObserver) }
+    }
+
+    /// 深浅色切换：窗口和底衬材质一起换；弹层、文字用的都是语义色，跟着自动翻。
+    private func applyWindowAppearance() {
+        let appearance = NSAppearance(named: LibraryBackdrop.darkMode ? .darkAqua : .aqua)
+        window?.appearance = appearance
+        (window?.contentView as? NSVisualEffectView)?.appearance = appearance
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -1839,9 +1896,9 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         backdrop.material = .popover
         backdrop.blendingMode = .behindWindow
         backdrop.state = .active
-        // 材质跟着系统外观走：亮色系统下 `.popover` 是浅色的，上面再压深色涂层只会得到一片脏灰。
-        // 钉成深色，才是录屏里那种"深色玻璃透出桌面"的样子，亮暗系统都一样。
-        backdrop.appearance = NSAppearance(named: .darkAqua)
+        // 材质外观钉在自己身上，不跟系统走：默认深色（录屏里那种"深色玻璃透出桌面"），
+        // 底栏「深色/浅色」磁贴切换时由 applyWindowAppearance() 统一换。
+        backdrop.appearance = NSAppearance(named: LibraryBackdrop.darkMode ? .darkAqua : .aqua)
         win.contentView = backdrop
 
         let shell = ShellView(frame: NSRect(x: 0, y: 0, width: 1060, height: 730))
@@ -1915,14 +1972,16 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             self.toggleSettings(from: anchor)
         }
 
-        // 画面微调：速度 / 循环片段 / 明暗，加生成设置与「重新生成」入口
-        let tunePill = SettingPill(actionTitle: "微调", symbol: "slider.horizontal.3")
-        tunePill.onTap = { [weak self, weak tunePill] in
-            guard let self, let anchor = tunePill else { return }
-            self.toggleTuning(from: anchor)
-        }
+        // 深浅色：壁纸库窗口外观手动切换。默认深色（照录屏定的），浅色给喜欢亮底的用户。
+        // 微调入口搬进了卡片右下角（悬停出现，就调那一张），底栏不再放「微调」磁贴。
+        let appearancePill = SettingPill(title: "深色", symbol: "mooncircle.fill", on: LibraryBackdrop.darkMode)
+        appearancePill.onText = "深色"
+        appearancePill.offText = "浅色"
+        appearancePill.onSymbol = "mooncircle.fill"
+        appearancePill.offSymbol = "sunmax.fill"
+        appearancePill.onToggle = { on in LibraryBackdrop.darkMode = on }
 
-        for p in [enabledPill, lockPill, autoPill, folderPill, settingsPill, tunePill] {
+        for p in [enabledPill, lockPill, autoPill, folderPill, settingsPill, appearancePill] {
             p.onHoverChange = { [weak self, weak p] on in
                 guard let self, let p else { return }
                 on ? self.showTip(for: p) : self.dockTip?.hide()
@@ -1979,7 +2038,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
         let pills = NSStackView(views: [transparencyRow, makeDivider(),
                                         enabledPill, lockPill, autoPill, divider,
-                                        folderPill, settingsPill, tunePill])
+                                        folderPill, settingsPill, appearancePill])
         pills.orientation = .horizontal
         pills.spacing = 6
         pills.alignment = .centerY
@@ -2005,6 +2064,13 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         scroller.onScroll = { [weak self] in self?.gallery.clearHoverState() }
 
         gallery.onApply = { [weak self] i in self?.delegate?.libraryApply(index: i) }
+        gallery.onTune = { [weak self] i, anchor in
+            guard let self else { return }
+            // 点哪张就调哪张：先切过去（实时效果要播出来才看得见），再在这张卡上开弹层。
+            // 切换不会重建卡片（setItems 只在 URL 列表变化时重建），锚点是安全的。
+            self.delegate?.libraryApply(index: i)
+            self.showTuning(from: anchor)
+        }
         gallery.onDelete = { [weak self] i in self?.delegate?.libraryDelete(index: i) }
         gallery.onReveal = { [weak self] i in
             guard let self, let urls = self.delegate?.libraryVideos(), i < urls.count else { return }
@@ -2162,10 +2228,9 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
     // MARK: 画面微调弹层
 
-    private func toggleTuning(from anchor: NSView) {
+    private func showTuning(from anchor: NSView) {
         if let pop = tuningPop, pop.isShown {
             pop.close()
-            return
         }
         let pop = NSPopover()
         pop.behavior = .transient
