@@ -482,10 +482,12 @@ final class Transcoder {
         try fm.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         // 片头介绍 / 片尾卡被切掉后，一切时长都按剩下的算
-        let s = min(max(start, 0), max(info.duration - 1.0, 0))
-        let e = min(max(end ?? info.duration, s + 0.6), info.duration)
+        var s = min(max(start, 0), max(info.duration - 1.0, 0))
+        var e = min(max(end ?? info.duration, s + 0.6), info.duration)
+        // 素材首尾的黑帧垫片自动掐掉：不掐的话循环一圈就黑闪一下（详见方法注释）
+        (s, e) = Self.trimBlackPadding(ffmpeg: ffmpeg, input: input, s: s, e: e)
         let dur = max(e - s, 0.6)
-        // 帧率 / 淡化来自「画面微调」的生成设置；默认仍是跟随源、上限 30、0.4s
+        // 帧率 / 淡化来自「画面微调」的生成设置；默认跟随源、上限 30、淡化 0（无缝循环）
         let cfr = Tuning.effectiveFPS(source: info.fps)
         let fade = dur > 2.0 ? min(Tuning.fadeSeconds, dur * 0.4) : 0.0
         let cut = max(dur - fade, 0.2)
@@ -530,8 +532,10 @@ final class Transcoder {
         }
 
         args += ["-an", "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p",
-                 "-crf", "20", "-preset", "medium",
-                 "-maxrate", "14M", "-bufsize", "28M",
+                 // 画质档位：CRF 18 + 20M 上限。壁纸是循环看的东西，接缝糊、暗部色带最显眼；
+                 // CRF 20 在慢速镜头上会糊出涂抹感，18 基本接近透明。体积约涨 20-35%。
+                 "-crf", "18", "-preset", "medium",
+                 "-maxrate", "20M", "-bufsize", "40M",
                  "-r", "\(cfr)", "-g", "\(cfr * 2)",
                  "-movflags", "+faststart", output.path]
 
@@ -673,5 +677,70 @@ final class Transcoder {
         onStage?("生成缩略图…")
         _ = Thumbs.image(for: dest)
         return dest
+    }
+
+    // MARK: 首尾黑帧垫片
+
+    /// 自动掐掉素材首尾的黑帧垫片。
+    ///
+    /// 网上下载的壁纸素材经常首尾各带两三帧黑帧（上段淡出的残留、编码器对齐补齐），
+    /// 每一帧单看都"没毛病"，一循环就每隔一圈黑闪一下——用户只会觉得壁纸有 bug。
+    /// 这里只掐 ≤0.5 秒、贴着首尾的黑场；更长的黑场是内容（转场、刻意留黑），不动，
+    /// 留给用户手动裁。检测只扫首尾各 1.5 秒的小窗口，长视频也几乎不增加耗时。
+    private static func trimBlackPadding(ffmpeg: URL, input: URL, s: Double, e: Double) -> (Double, Double) {
+        guard e - s > 1.6 else { return (s, e) }
+        let window = 1.5
+
+        func probe(_ args: [String]) -> [(Double, Double, Double)] {
+            let p = Process()
+            p.executableURL = ffmpeg
+            p.arguments = args
+            let errPipe = Pipe()
+            p.standardOutput = Pipe()
+            p.standardError = errPipe
+            p.standardInput = FileHandle.nullDevice
+            guard (try? p.run()) != nil else { return [] }
+            let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            guard p.terminationStatus == 0,
+                  let text = String(data: data, encoding: .utf8) else { return [] }
+            var spans: [(Double, Double, Double)] = []
+            for line in text.split(separator: "\n") where line.contains("black_start:") {
+                guard let r = line.range(of: "black_start:") else { continue }
+                let fields = line[r.lowerBound...].split(separator: " ")
+                let vals = fields.compactMap { Double($0.split(separator: ":").last ?? Substring()) }
+                if vals.count >= 3 { spans.append((vals[0], vals[1], vals[2])) }
+            }
+            return spans
+        }
+
+        func secs(_ v: Double) -> String { String(format: "%.3f", v) }
+        let vf = "blackdetect=d=0.02:pix_th=0.12"
+
+        var head = s
+        var tail = e
+
+        // 片头：黑场从窗口开头开始、且不长 → 起点推到黑场结束处（第一帧亮画面）。
+        // 注意切点是 black_end（黑场的终点），不是"起点 + 黑场时长"——后者会差出一帧。
+        for (st, en, du) in probe(["-hide_banner", "-loglevel", "info", "-nostdin",
+                                   "-ss", secs(s), "-t", secs(window), "-i", input.path,
+                                   "-vf", vf, "-an", "-f", "null", "-"]) {
+            if st <= 0.02, du <= 0.5 { head = s + en }
+        }
+        // 片尾：黑场贴着窗口末端（black_end 到头）→ 终点收到黑场开始处（最后一帧亮画面）。
+        // 容差 0.08：容器标称时长常比最后一帧的 pts 多出几十毫秒，卡太死会漏检。
+        let windowStart = max(0, e - window)
+        let windowEnd = min(window, e - head)
+        for (st, en, du) in probe(["-hide_banner", "-loglevel", "info", "-nostdin",
+                                   "-ss", secs(windowStart), "-t", secs(window), "-i", input.path,
+                                   "-vf", vf, "-an", "-f", "null", "-"]) {
+            if en >= windowEnd - 0.08, du <= 0.5 { tail = windowStart + st }
+        }
+
+        // 掐完至少还得留 0.6 秒画面，否则维持原样
+        if tail - head >= 0.6, tail > e - 0.51 || head > s + 0.01 {
+            return (head, tail)
+        }
+        return (s, e)
     }
 }

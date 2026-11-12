@@ -912,11 +912,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 (w.contentView?.subviews.first as? WallpaperView)?.applyTint(Tuning.brightness)
             }
         case Tuning.Key.loopStart, Tuning.Key.loopLength, "reset":
-            // AVPlayerLooper 的 timeRange 只能在构造时给，改区间只能重建循环器
-            if isShowing { rebuild() }
+            // AVPlayerLooper 的 timeRange 只能在构造时给，改区间只能换循环器。
+            // 不能走 rebuild()：整栈重建会把窗口 orderOut 再新建，新窗口要等解码出
+            // 第一帧才有画面，中间那几百毫秒露的是窗口黑底 —— 用户拖一下滑杆就黑闪一下。
+            if isShowing { relaunchLoopers() }
         default:
             break   // 生成层：下次导入 / 重新生成时才生效，不惊动正在播的画面
         }
+    }
+
+    /// 换循环区间：窗口、playerLayer 原地不动，只把每个 player 上的循环器换掉。
+    /// 画面连续不断流，代价只是循环从头开始 —— 拖滑杆本来就是重设区间的语义。
+    private func relaunchLoopers() {
+        guard let url = currentVideo else { return }
+        let range = Tuning.loopStart > 0 || Tuning.loopLength > 0
+            ? Tuning.loopRange(total: duration(of: url)) : nil
+        for l in loopers { l.disableLooping() }
+        loopers.removeAll()
+        for p in players {
+            p.pause()
+            p.removeAllItems()
+            let item = AVPlayerItem(url: url)
+            let looper: AVPlayerLooper
+            if let range {
+                looper = AVPlayerLooper(player: p, templateItem: item, timeRange: range)
+            } else {
+                looper = AVPlayerLooper(player: p, templateItem: item)
+            }
+            loopers.append(looper)
+            p.play()
+            p.rate = Float(Tuning.speed)
+        }
+        // 换循环区间不改变暂停状态：原来暂停着的继续暂停
+        if isPaused { for p in players { p.pause() } }
     }
 
     /// 「用新设置重新生成这张壁纸」：按新帧率 / 淡化 / 片段长度再生成一份。
