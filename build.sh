@@ -9,7 +9,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 
 echo "==> 编译 Swift"
 swiftc -O -o "$APP/Contents/MacOS/VideoWallpaper" \
-  main.swift Downloader.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift \
+  main.swift Downloader.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift Tuning.swift \
   -framework Cocoa -framework AVFoundation
 
 echo "==> 组装 App Bundle"

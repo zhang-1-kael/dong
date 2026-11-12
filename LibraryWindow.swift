@@ -1915,7 +1915,14 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             self.toggleSettings(from: anchor)
         }
 
-        for p in [enabledPill, lockPill, autoPill, folderPill, settingsPill] {
+        // 画面微调：速度 / 循环片段 / 明暗，加生成设置与「重新生成」入口
+        let tunePill = SettingPill(actionTitle: "微调", symbol: "slider.horizontal.3")
+        tunePill.onTap = { [weak self, weak tunePill] in
+            guard let self, let anchor = tunePill else { return }
+            self.toggleTuning(from: anchor)
+        }
+
+        for p in [enabledPill, lockPill, autoPill, folderPill, settingsPill, tunePill] {
             p.onHoverChange = { [weak self, weak p] on in
                 guard let self, let p else { return }
                 on ? self.showTip(for: p) : self.dockTip?.hide()
@@ -1972,7 +1979,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
         let pills = NSStackView(views: [transparencyRow, makeDivider(),
                                         enabledPill, lockPill, autoPill, divider,
-                                        folderPill, settingsPill])
+                                        folderPill, settingsPill, tunePill])
         pills.orientation = .horizontal
         pills.spacing = 6
         pills.alignment = .centerY
@@ -2089,6 +2096,12 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var autoPill: SettingPill?
     /// 设置弹层（匿名统计开关 + 检查更新）
     private var settingsPop: NSPopover?
+    /// 画面微调弹层
+    private var tuningPop: NSPopover?
+    private var tuneSpeedLabel: NSTextField?
+    private var tuneStartLabel: NSTextField?
+    private var tuneLengthLabel: NSTextField?
+    private var tuneBrightLabel: NSTextField?
     private var settingsSwitch: NSSwitch?
     private var settingsAction: NSButton?
     private var settingsStatus: NSTextField?
@@ -2145,6 +2158,225 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         }
         RunLoop.main.add(t, forMode: .common)
         settingsTimer = t
+    }
+
+    // MARK: 画面微调弹层
+
+    private func toggleTuning(from anchor: NSView) {
+        if let pop = tuningPop, pop.isShown {
+            pop.close()
+            return
+        }
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.contentViewController = makeTuningController()
+        pop.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        tuningPop = pop
+    }
+
+    private func makeTuningController() -> NSViewController {
+        let vc = NSViewController()
+        let width: CGFloat = 330
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 460))
+        root.wantsLayer = true
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        root.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: root.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+        ])
+
+        func heading(_ s: String) -> NSTextField {
+            let l = NSTextField(labelWithString: s)
+            l.font = .systemFont(ofSize: 13, weight: .semibold)
+            return l
+        }
+        func caption(_ s: String, tint: NSColor? = nil) -> NSTextField {
+            let l = NSTextField(wrappingLabelWithString: s)
+            l.font = .systemFont(ofSize: 11)
+            l.textColor = tint ?? .secondaryLabelColor
+            l.maximumNumberOfLines = 0
+            l.preferredMaxLayoutWidth = width - 32
+            l.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+            return l
+        }
+        func sliderRow(_ title: String, value: String, min: Double, max: Double,
+                       current: Double, action: Selector) -> (NSStackView, NSTextField) {
+            let r = NSStackView()
+            r.orientation = .horizontal
+            r.alignment = .centerY
+            r.spacing = 8
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 12.5)
+            label.widthAnchor.constraint(equalToConstant: 62).isActive = true
+            let slider = NSSlider(value: current, minValue: min, maxValue: max,
+                                  target: self, action: action)
+            slider.controlSize = .small
+            slider.widthAnchor.constraint(equalToConstant: 148).isActive = true
+            let val = NSTextField(labelWithString: value)
+            val.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+            val.textColor = .secondaryLabelColor
+            val.alignment = .right
+            val.widthAnchor.constraint(equalToConstant: 52).isActive = true
+            r.addArrangedSubview(label)
+            r.addArrangedSubview(slider)
+            r.addArrangedSubview(val)
+            r.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+            return (r, val)
+        }
+        func selectRow(_ title: String, items: [String], selected: Int,
+                       action: Selector) -> NSStackView {
+            let r = NSStackView()
+            r.orientation = .horizontal
+            r.alignment = .centerY
+            r.spacing = 8
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 12.5)
+            label.widthAnchor.constraint(equalToConstant: 62).isActive = true
+            let pop = NSPopUpButton(frame: .zero, pullsDown: false)
+            pop.addItems(withTitles: items)
+            pop.selectItem(at: selected)
+            pop.target = self
+            pop.action = action
+            pop.controlSize = .small
+            r.addArrangedSubview(label)
+            r.addArrangedSubview(pop)
+            r.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+            return r
+        }
+
+        stack.addArrangedSubview(heading("画面微调"))
+        stack.addArrangedSubview(caption("拖完即走，设置会记住"))
+        stack.addArrangedSubview(caption("实时生效 · 当前这张壁纸", tint: .controlAccentColor))
+
+        let speed = sliderRow("播放速度", value: String(format: "%.2f×", Tuning.speed),
+                              min: 0.5, max: 2, current: Tuning.speed,
+                              action: #selector(tuneSpeedChanged(_:)))
+        stack.addArrangedSubview(speed.0)
+        tuneSpeedLabel = speed.1
+
+        let start = sliderRow("循环起点", value: String(format: "%.0f s", Tuning.loopStart),
+                              min: 0, max: 30, current: Tuning.loopStart,
+                              action: #selector(tuneStartChanged(_:)))
+        stack.addArrangedSubview(start.0)
+        tuneStartLabel = start.1
+
+        let lengthText = Tuning.loopLength > 0 ? String(format: "%.0f s", Tuning.loopLength) : "整段"
+        let length = sliderRow("循环长度", value: lengthText,
+                               min: 0, max: 30, current: Tuning.loopLength,
+                               action: #selector(tuneLengthChanged(_:)))
+        stack.addArrangedSubview(length.0)
+        tuneLengthLabel = length.1
+
+        let bright = sliderRow("明暗", value: String(format: "%+.0f%%", Tuning.brightness * 100),
+                               min: -1, max: 1, current: Tuning.brightness,
+                               action: #selector(tuneBrightnessChanged(_:)))
+        stack.addArrangedSubview(bright.0)
+        tuneBrightLabel = bright.1
+
+        let line = NSBox()
+        line.boxType = .separator
+        stack.addArrangedSubview(line)
+        line.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+        stack.addArrangedSubview(caption("生成设置 · 重新生成或下次导入后写入视频"))
+
+        let fpsIndex: Int
+        switch Tuning.outputFPS {
+        case 24: fpsIndex = 1
+        case 30: fpsIndex = 2
+        case 60: fpsIndex = 3
+        default: fpsIndex = 0
+        }
+        stack.addArrangedSubview(selectRow("输出帧率",
+                                           items: ["跟随源（≤30）", "24 fps · 更省电", "30 fps", "60 fps · 体积翻倍"],
+                                           selected: fpsIndex, action: #selector(tuneFPSChanged(_:))))
+        let f = Tuning.fadeSeconds
+        let fadeIndex = f < 0.1 ? 0 : (f < 0.3 ? 1 : (f < 0.6 ? 2 : 3))
+        stack.addArrangedSubview(selectRow("首尾淡化", items: ["关闭", "0.2 s", "0.4 s（默认）", "0.8 s"],
+                                           selected: fadeIndex, action: #selector(tuneFadeChanged(_:))))
+        let durIndex: Int
+        switch Tuning.maxDuration {
+        case 15: durIndex = 1
+        case 30: durIndex = 2
+        case 60: durIndex = 3
+        default: durIndex = 0
+        }
+        stack.addArrangedSubview(selectRow("最长片段", items: ["不限制", "15 s", "30 s", "60 s"],
+                                           selected: durIndex, action: #selector(tuneMaxDurationChanged(_:))))
+
+        let regen = NSButton(title: "用新设置重新生成这张壁纸",
+                             target: self, action: #selector(tuneRegenerateTapped))
+        regen.bezelStyle = .rounded
+        regen.controlSize = .small
+        regen.font = .systemFont(ofSize: 11.5)
+        stack.addArrangedSubview(regen)
+        regen.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        let reset = NSButton(title: "还原默认", target: self, action: #selector(tuneResetTapped))
+        reset.bezelStyle = .rounded
+        reset.controlSize = .small
+        reset.font = .systemFont(ofSize: 11.5)
+        stack.addArrangedSubview(reset)
+        reset.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+
+        stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · 30 fps · 0.4 s 淡化"))
+
+        vc.view = root
+        root.layoutSubtreeIfNeeded()
+        let h = max(stack.fittingSize.height, 120)
+        root.setFrameSize(NSSize(width: width, height: h))
+        vc.preferredContentSize = NSSize(width: width, height: h)
+        return vc
+    }
+
+    @objc private func tuneSpeedChanged(_ sender: NSSlider) {
+        Tuning.speed = sender.doubleValue
+        tuneSpeedLabel?.stringValue = String(format: "%.2f×", Tuning.speed)
+    }
+    @objc private func tuneStartChanged(_ sender: NSSlider) {
+        Tuning.loopStart = sender.doubleValue.rounded()
+        tuneStartLabel?.stringValue = String(format: "%.0f s", Tuning.loopStart)
+    }
+    @objc private func tuneLengthChanged(_ sender: NSSlider) {
+        Tuning.loopLength = sender.doubleValue.rounded()
+        tuneLengthLabel?.stringValue = Tuning.loopLength > 0
+            ? String(format: "%.0f s", Tuning.loopLength) : "整段"
+    }
+    @objc private func tuneBrightnessChanged(_ sender: NSSlider) {
+        Tuning.brightness = sender.doubleValue
+        tuneBrightLabel?.stringValue = String(format: "%+.0f%%", Tuning.brightness * 100)
+    }
+    @objc private func tuneFPSChanged(_ sender: NSPopUpButton) {
+        let options = [0, 24, 30, 60]
+        let i = sender.indexOfSelectedItem
+        guard i >= 0, i < options.count else { return }
+        Tuning.outputFPS = options[i]
+    }
+    @objc private func tuneFadeChanged(_ sender: NSPopUpButton) {
+        let options = [0.0, 0.2, 0.4, 0.8]
+        let i = sender.indexOfSelectedItem
+        guard i >= 0, i < options.count else { return }
+        Tuning.fadeSeconds = options[i]
+    }
+    @objc private func tuneMaxDurationChanged(_ sender: NSPopUpButton) {
+        let options = [0.0, 15, 30, 60]
+        let i = sender.indexOfSelectedItem
+        guard i >= 0, i < options.count else { return }
+        Tuning.maxDuration = options[i]
+    }
+    @objc private func tuneRegenerateTapped() {
+        NotificationCenter.default.post(name: Tuning.regenerateRequested, object: nil)
+    }
+    @objc private func tuneResetTapped() {
+        Tuning.reset()
+        tuningPop?.contentViewController = makeTuningController()
     }
 
     private func makeSettingsController() -> NSViewController {

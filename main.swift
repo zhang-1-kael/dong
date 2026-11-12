@@ -23,6 +23,8 @@ final class WallpaperView: NSView {
     /// 也是「自己做的手机竖屏视频最卡」的直接原因。
     private let backdrop = CALayer()
     private let dim = CALayer()
+    /// 用户微调的明暗叠层：始终盖在画面最上层，一层半透明纯色，零逐帧成本
+    private let tint = CALayer()
     /// true = 铺满裁切；false = 完整显示 + 模糊补边
     private(set) var isFilled = true
     /// 模糊底准备好了没有。没准备好就整块不显示，免得先闪一块纯色。
@@ -47,6 +49,9 @@ final class WallpaperView: NSView {
 
         playerLayer.videoGravity = .resizeAspectFill
         root.addSublayer(playerLayer)
+
+        tint.backgroundColor = NSColor.clear.cgColor
+        root.addSublayer(tint)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -71,6 +76,14 @@ final class WallpaperView: NSView {
         dim.backgroundColor = NSColor.black.withAlphaComponent(alpha).cgColor
     }
 
+    /// −1…1：正数叠白提亮、负数叠黑压暗。只用一层纯色，不碰解码链路
+    func applyTint(_ value: CGFloat) {
+        let v = min(1, max(-1, value))
+        let alpha = CGFloat(abs(v)) * 0.35
+        let paint: NSColor = v >= 0 ? .white : .black
+        tint.backgroundColor = paint.withAlphaComponent(alpha).cgColor
+    }
+
     /// true = 铺满（比例一致时用），false = 完整显示 + 模糊补边
     func setFilled(_ filled: Bool) {
         isFilled = filled
@@ -85,6 +98,7 @@ final class WallpaperView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let b = bounds
+        tint.frame = b
         if isFilled {
             playerLayer.frame = b
             backdrop.isHidden = true
@@ -327,6 +341,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.object(forKey: "wallpaperEnabled") == nil
     }
     private var isPaused = false
+    /// 只在设了循环片段时才同步读一次素材时长，读完缓存，默认设置下零开销
+    private var durationCache: [URL: Double] = [:]
 
     private var libraryWC: LibraryWindowController?
     /// 这条导入是从哪儿来的：只用来算埋点（来源站名 + 耗时），不进任何日志文本
@@ -386,6 +402,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 起来就开始记帧健康：只记数字，一分钟落一行，成本近似为零
         FrameHealth.shared.start()
+        NotificationCenter.default.addObserver(self, selector: #selector(tuningChanged(_:)),
+                                               name: Tuning.changed, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(regenerateWithTuning),
+                                               name: Tuning.regenerateRequested, object: nil)
         // 调试用：VW_PRESETS_TEST=/tmp/xxx 把包内默认壁纸导到指定目录看结果（验证用）
         if let testDir = ProcessInfo.processInfo.environment["VW_PRESETS_TEST"] {
             let dst = URL(fileURLWithPath: testDir)
@@ -744,7 +764,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 模板 item。以前这里给 item 设过 preferredMaximumResolution 想把解码尺寸
         // 压到屏幕像素，实测在这条解码链路上不生效（交付尺寸仍是源尺寸），已撤掉。
-        let looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        // 用户设了「只循环某一段」时用带 timeRange 的构造器；没设就走默认构造器，
+        // 行为和老版本完全一致。
+        let item = AVPlayerItem(url: url)
+        let looper: AVPlayerLooper
+        if Tuning.loopStart > 0 || Tuning.loopLength > 0,
+           let range = Tuning.loopRange(total: duration(of: url)) {
+            looper = AVPlayerLooper(player: player, templateItem: item, timeRange: range)
+        } else {
+            looper = AVPlayerLooper(player: player, templateItem: item)
+        }
         loopers.append(looper)
         players.append(player)
 
@@ -791,6 +820,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             view.playerLayer.videoGravity = portrait ? .resizeAspect : .resizeAspectFill
             view.applyDim(plan.dimAlpha)
+            view.applyTint(Tuning.brightness)
             view.setFilled(!portrait)
 
             window.setFrame(frame, display: true)
@@ -804,6 +834,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         player.play()
+        // play() 会把 rate 重置成 1，自定义倍速必须放在它后面；切壁纸 / 换屏幕重建时也走这里
+        player.rate = Float(Tuning.speed)
 
         // 挂上取证探针：记主线程卡顿和解码停顿，一分钟落一行日志
         if let p = firstPlan {
@@ -855,6 +887,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loopers.removeAll()
         players.removeAll()
         windows.removeAll()
+    }
+
+    // MARK: 画面微调
+
+    /// 只在设了循环片段时才同步读一次时长；读到的值缓存住，不反复碰磁盘
+    private func duration(of url: URL) -> Double {
+        if let d = durationCache[url] { return d }
+        let seconds = CMTimeGetSeconds(AVURLAsset(url: url).duration)
+        let v = seconds.isFinite && seconds > 0 ? seconds : 0
+        durationCache[url] = v
+        return v
+    }
+
+    /// 设置变了：实时项尽量只改现有对象，别为了拖一下滑杆就把桌面窗口全重建一遍
+    @objc private func tuningChanged(_ note: Notification) {
+        let key = note.userInfo?["key"] as? String ?? ""
+        switch key {
+        case Tuning.Key.speed:
+            guard !isPaused else { return }
+            for p in players { p.rate = Float(Tuning.speed) }
+        case Tuning.Key.brightness:
+            for w in windows {
+                (w.contentView?.subviews.first as? WallpaperView)?.applyTint(Tuning.brightness)
+            }
+        case Tuning.Key.loopStart, Tuning.Key.loopLength, "reset":
+            // AVPlayerLooper 的 timeRange 只能在构造时给，改区间只能重建循环器
+            if isShowing { rebuild() }
+        default:
+            break   // 生成层：下次导入 / 重新生成时才生效，不惊动正在播的画面
+        }
+    }
+
+    /// 「用新设置重新生成这张壁纸」：按新帧率 / 淡化 / 片段长度再生成一份。
+    /// 写成新文件、绝不覆盖或删掉用户原来那张，生成完自动切过去。
+    @objc private func regenerateWithTuning() {
+        guard let cur = currentVideo, let ffmpeg = Transcoder.ffmpegURL else {
+            libraryWC?.setBusy(false, progress: 0, text: "找不到视频处理组件（ffmpeg）")
+            return
+        }
+        libraryWC?.setBusy(true, progress: 0, text: "正在按新设置重新生成…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            do {
+                guard let info = Transcoder.probe(cur) else {
+                    throw NSError(domain: "Tuning", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "读不到当前视频信息"])
+                }
+                let size = Transcoder.targetSize(for: info)
+                let end = Tuning.maxDuration > 0 ? min(info.duration, Tuning.maxDuration) : info.duration
+                let base = cur.deletingPathExtension().lastPathComponent
+                let dir = Source.libraryDir
+                var dest = dir.appendingPathComponent(base + "-微调.mp4")
+                var n = 2
+                while FileManager.default.fileExists(atPath: dest.path) {
+                    dest = dir.appendingPathComponent(base + "-微调 \(n).mp4")
+                    n += 1
+                }
+                let tc = Transcoder(ffmpeg: ffmpeg)
+                try tc.transcode(input: cur, output: dest, info: info, size: size,
+                                 start: 0, end: end, watermark: nil)
+                _ = Thumbs.image(for: dest)
+                let name = dest.lastPathComponent
+                DispatchQueue.main.async {
+                    self.videos = Source.load()
+                    if let i = self.videos.firstIndex(where: { $0.lastPathComponent == name }) {
+                        self.index = i
+                    }
+                    self.libraryWC?.setBusy(false, progress: 1, text: "已按新设置生成")
+                    if self.isShowing {
+                        self.rebuild()
+                        self.pushLockScreen()
+                    }
+                    self.libraryWC?.reload()
+                }
+            } catch {
+                let msg = error.localizedDescription
+                DispatchQueue.main.async {
+                    self.libraryWC?.setBusy(false, progress: 0, text: "重新生成失败：\(msg)")
+                }
+            }
+        }
     }
 
     // MARK: 菜单栏

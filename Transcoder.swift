@@ -485,8 +485,9 @@ final class Transcoder {
         let s = min(max(start, 0), max(info.duration - 1.0, 0))
         let e = min(max(end ?? info.duration, s + 0.6), info.duration)
         let dur = max(e - s, 0.6)
-        let cfr = max(1, min(30, Int(info.fps.rounded())))
-        let fade = dur > 2.0 ? 0.4 : 0.0
+        // 帧率 / 淡化来自「画面微调」的生成设置；默认仍是跟随源、上限 30、0.4s
+        let cfr = Tuning.effectiveFPS(source: info.fps)
+        let fade = dur > 2.0 ? min(Tuning.fadeSeconds, dur * 0.4) : 0.0
         let cut = max(dur - fade, 0.2)
         // 尺寸已经按原片比例算好，这里只做等比缩放，不再裁切（以前会把两侧/上下裁掉，画面看着被放大）
         let base = "fps=\(cfr),scale=\(size.w):\(size.h):flags=lanczos,"
@@ -626,7 +627,7 @@ final class Transcoder {
             n += 1
         }
 
-        let fps = max(1, min(30, Int(info.fps.rounded())))
+        let fps = Tuning.effectiveFPS(source: info.fps)
 
         // 片头介绍 / 片尾卡 / 画面角标：先都判一遍，再把中间的主体送去转码
         lastTrimmed = 0
@@ -648,6 +649,10 @@ final class Transcoder {
         if tail - head < 3.0 {
             head = 0
             lastHeadTrimmed = 0
+        }
+        // 「最长片段」：自动裁头尾之后再做一次上限截断
+        if Tuning.maxDuration > 0, tail - head > Tuning.maxDuration {
+            tail = head + Tuning.maxDuration
         }
         var notes: [String] = []
         if lastHeadTrimmed > 0 { notes.append(String(format: "片头 %.1f 秒", lastHeadTrimmed)) }
