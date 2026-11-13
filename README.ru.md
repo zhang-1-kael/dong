@@ -5,7 +5,7 @@
   <a href="#возможности"><strong>Посмотреть Dòng »</strong></a><br><br>
   <a href="#установка">Скачать для macOS</a> · <a href="https://dongisgood.coze.site/en">Официальный сайт ↗</a><br>
   <a href="i18n/ru/AI_INSTALL_PROMPT.md"><strong>🤖 Пусть ИИ установит за меня (самый простой способ) »</strong></a><br>
-  <i>~ Версия 3.31 · macOS 13 и выше · Apple Silicon ~</i></p>
+  <i>~ Версия 3.36 · macOS 13 и выше · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <b>Русский</b>
@@ -22,7 +22,7 @@
 <h6 align="center">
   <a href="i18n/ru/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-%D0%9E%D0%B4%D0%BD%D0%BE_%D1%81%D0%BE%D0%BE%D0%B1%D1%89%D0%B5%D0%BD%D0%B8%D0%B5-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/%D0%9B%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
-  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
+  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.36-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.36"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>

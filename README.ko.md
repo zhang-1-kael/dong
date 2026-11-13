@@ -5,7 +5,7 @@
   <a href="#기능"><strong>Dòng 살펴보기 »</strong></a><br><br>
   <a href="#설치">macOS용 다운로드</a> · <a href="https://dongisgood.coze.site/en">공식 웹사이트 ↗</a><br>
   <a href="i18n/ko/AI_INSTALL_PROMPT.md"><strong>🤖 AI에게 설치 맡기기 (가장 쉬움) »</strong></a><br>
-  <i>~ 버전 3.31 · macOS 13 이상 · Apple Silicon ~</i></p>
+  <i>~ 버전 3.36 · macOS 13 이상 · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <b>한국어</b> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.it.md">Italiano</a> · <a href="README.ru.md">Русский</a>
@@ -22,7 +22,7 @@
 <h6 align="center">
   <a href="i18n/ko/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-%EB%A9%94%EC%8B%9C%EC%A7%80_%ED%95%98%EB%82%98-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/%EB%9D%BC%EC%9D%B4%EC%84%A0%EC%8A%A4-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
-  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.31-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.31"></a>
+  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.36-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.36"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
