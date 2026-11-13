@@ -17,7 +17,9 @@ DerivedData/
 .venv/
 venv/
 node_modules/
-vendor/
+# 只忽略 vendor/ 里的其它内容，链接解析组件 yt-dlp_macos 必须进版本库（否则干净打包会丢）
+vendor/*
+!vendor/yt-dlp_macos
 
 # ── 素材（体积大 / 版权受限，不入库）────────────────────
 # presets/ 是内置壁纸，bili/ 是从平台抓下来的原始素材。

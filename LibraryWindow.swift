@@ -567,6 +567,56 @@ final class GalleryView: NSView {
     /// (卡片序号, 锚点视图)：控制器拿来切壁纸 + 开微调弹层
     var onTune: ((Int, NSView) -> Void)?
 
+    /// 整片壁纸库任意位置（含卡片之上）都能接收拖进来的视频。
+    /// 卡片本身是 `WallpaperCard`，拖到卡片上时若只靠外壳 `shell` 回退，
+    /// 某些情况下落点会判到卡片、收不到添加；让直接装着卡片的 gallery 也注册为
+    /// 拖拽目标，落在卡片（卡片→gallery）或缝隙（gallery）都直接命中这里。
+    var onDrop: (([URL]) -> Void)?
+    var onDragStateChange: ((Bool) -> Void)?
+    private var accepts = false
+
+    private var dropRegistered = false
+    private func ensureDropRegistered() {
+        guard !dropRegistered else { return }
+        dropRegistered = true
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        ensureDropRegistered()
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private func acceptFiles(from sender: NSDraggingInfo) -> Bool {
+        !ShellView.videoURLs(from: sender.draggingPasteboard).isEmpty
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        accepts = acceptFiles(from: sender)
+        onDragStateChange?(accepts)
+        return accepts ? .copy : []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        accepts ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        accepts = false
+        onDragStateChange?(false)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let files = ShellView.videoURLs(from: sender.draggingPasteboard)
+        accepts = false
+        onDragStateChange?(false)
+        guard !files.isEmpty else { return false }
+        onDrop?(files)
+        return true
+    }
+
     private var cards: [WallpaperCard] = []
     private var urls: [URL] = []
     private var current = -1
@@ -2076,6 +2126,9 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             guard let self, let urls = self.delegate?.libraryVideos(), i < urls.count else { return }
             NSWorkspace.shared.activateFileViewerSelecting([urls[i]])
         }
+        // 整片壁纸库都能接收拖入的视频：落点不管在卡片上还是缝隙里都直接命中 gallery
+        gallery.onDrop = { [weak self] urls in self?.delegate?.libraryAdd(urls: urls) }
+        gallery.onDragStateChange = { [weak self] on in self?.overlay.setVisible(on) }
 
         emptyView = makeEmptyView()
 
@@ -2380,7 +2433,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
                                            selected: fpsIndex, action: #selector(tuneFPSChanged(_:))))
         let f = Tuning.fadeSeconds
         let fadeIndex = f < 0.1 ? 0 : (f < 0.3 ? 1 : (f < 0.6 ? 2 : 3))
-        stack.addArrangedSubview(selectRow("首尾淡化", items: ["关闭", "0.2 s", "0.4 s（默认）", "0.8 s"],
+        stack.addArrangedSubview(selectRow("首尾淡化", items: ["关闭（默认 · 无缝循环）", "溶解 0.2 s", "溶解 0.4 s", "溶解 0.8 s"],
                                            selected: fadeIndex, action: #selector(tuneFadeChanged(_:))))
         let durIndex: Int
         switch Tuning.maxDuration {
@@ -2407,7 +2460,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(reset)
         reset.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
 
-        stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · 30 fps · 0.4 s 淡化"))
+        stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · 30 fps · 无缝循环 · 溶解关闭"))
 
         vc.view = root
         root.layoutSubtreeIfNeeded()

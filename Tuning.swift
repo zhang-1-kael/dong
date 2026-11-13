@@ -87,9 +87,11 @@ enum Tuning {
         set { write(Key.outputFPS, Double(newValue)) }
     }
 
-    /// 首尾交叉淡化秒数，0 = 关闭，默认 0.4
+    /// 首尾交叉淡化秒数，0 = 关闭（默认）。能自然无缝循环的素材就该直接循环，
+    /// 交叉溶解会把"一直在动"变成"每圈溶一次"；只有播放时每帧内容都不同、
+    /// 接缝必然跳变的素材才值得开溶解遮一下。
     static var fadeSeconds: Double {
-        get { clamp(read(Key.fade, 0.4), 0, 0.8) }
+        get { clamp(read(Key.fade, 0), 0, 0.8) }
         set { write(Key.fade, clamp(newValue, 0, 0.8)) }
     }
 
