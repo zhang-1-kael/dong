@@ -2218,9 +2218,6 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     /// 画面微调弹层
     private var tuningPop: NSPopover?
     private var tuneSpeedLabel: NSTextField?
-    private var tuneStartLabel: NSTextField?
-    private var tuneLengthLabel: NSTextField?
-    private var tuneBrightLabel: NSTextField?
     private var settingsSwitch: NSSwitch?
     private var settingsAction: NSButton?
     private var settingsStatus: NSTextField?
@@ -2374,46 +2371,11 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(caption("拖完即走，设置会记住"))
         stack.addArrangedSubview(caption("实时生效 · 当前这张壁纸", tint: .controlAccentColor))
 
-        // 微调对象：库里不止一张时可以挑一张来调。选哪张就立刻切到哪张当壁纸——
-        // 实时效果（速度 / 循环 / 明暗）必须播出来才看得见，顺带让「重新生成」也对准它。
-        // 只有一张时不显示选择器，面板跟以前一模一样。
-        let vids = delegate?.libraryVideos() ?? []
-        let current = delegate?.libraryCurrentIndex() ?? 0
-        if vids.count > 1 {
-            let titles = vids.enumerated().map { i, url -> String in
-                let base = url.deletingPathExtension().lastPathComponent
-                let short = base.count > 22 ? String(base.prefix(21)) + "…" : base
-                return i == current ? "使用中 · " + short : short
-            }
-            stack.addArrangedSubview(selectRow("微调对象", items: titles, selected: current,
-                                               action: #selector(tuneTargetChanged(_:))))
-            stack.addArrangedSubview(caption("换选会立刻把桌面切成那张，边看边调"))
-        }
-
         let speed = sliderRow("播放速度", value: String(format: "%.2f×", Tuning.speed),
                               min: 0.5, max: 2, current: Tuning.speed,
                               action: #selector(tuneSpeedChanged(_:)))
         stack.addArrangedSubview(speed.0)
         tuneSpeedLabel = speed.1
-
-        let start = sliderRow("循环起点", value: String(format: "%.0f s", Tuning.loopStart),
-                              min: 0, max: 30, current: Tuning.loopStart,
-                              action: #selector(tuneStartChanged(_:)))
-        stack.addArrangedSubview(start.0)
-        tuneStartLabel = start.1
-
-        let lengthText = Tuning.loopLength > 0 ? String(format: "%.0f s", Tuning.loopLength) : "整段"
-        let length = sliderRow("循环长度", value: lengthText,
-                               min: 0, max: 30, current: Tuning.loopLength,
-                               action: #selector(tuneLengthChanged(_:)))
-        stack.addArrangedSubview(length.0)
-        tuneLengthLabel = length.1
-
-        let bright = sliderRow("明暗", value: String(format: "%+.0f%%", Tuning.brightness * 100),
-                               min: -1, max: 1, current: Tuning.brightness,
-                               action: #selector(tuneBrightnessChanged(_:)))
-        stack.addArrangedSubview(bright.0)
-        tuneBrightLabel = bright.1
 
         let line = NSBox()
         line.boxType = .separator
@@ -2435,15 +2397,6 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let fadeIndex = f < 0.1 ? 0 : (f < 0.3 ? 1 : (f < 0.6 ? 2 : 3))
         stack.addArrangedSubview(selectRow("首尾淡化", items: ["关闭（默认 · 无缝循环）", "溶解 0.2 s", "溶解 0.4 s", "溶解 0.8 s"],
                                            selected: fadeIndex, action: #selector(tuneFadeChanged(_:))))
-        let durIndex: Int
-        switch Tuning.maxDuration {
-        case 15: durIndex = 1
-        case 30: durIndex = 2
-        case 60: durIndex = 3
-        default: durIndex = 0
-        }
-        stack.addArrangedSubview(selectRow("最长片段", items: ["不限制", "15 s", "30 s", "60 s"],
-                                           selected: durIndex, action: #selector(tuneMaxDurationChanged(_:))))
 
         let regen = NSButton(title: "用新设置重新生成这张壁纸",
                              target: self, action: #selector(tuneRegenerateTapped))
@@ -2474,19 +2427,6 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         Tuning.speed = sender.doubleValue
         tuneSpeedLabel?.stringValue = String(format: "%.2f×", Tuning.speed)
     }
-    @objc private func tuneStartChanged(_ sender: NSSlider) {
-        Tuning.loopStart = sender.doubleValue.rounded()
-        tuneStartLabel?.stringValue = String(format: "%.0f s", Tuning.loopStart)
-    }
-    @objc private func tuneLengthChanged(_ sender: NSSlider) {
-        Tuning.loopLength = sender.doubleValue.rounded()
-        tuneLengthLabel?.stringValue = Tuning.loopLength > 0
-            ? String(format: "%.0f s", Tuning.loopLength) : "整段"
-    }
-    @objc private func tuneBrightnessChanged(_ sender: NSSlider) {
-        Tuning.brightness = sender.doubleValue
-        tuneBrightLabel?.stringValue = String(format: "%+.0f%%", Tuning.brightness * 100)
-    }
     @objc private func tuneFPSChanged(_ sender: NSPopUpButton) {
         let options = [0, 24, 30, 60]
         let i = sender.indexOfSelectedItem
@@ -2499,28 +2439,12 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         guard i >= 0, i < options.count else { return }
         Tuning.fadeSeconds = options[i]
     }
-    @objc private func tuneMaxDurationChanged(_ sender: NSPopUpButton) {
-        let options = [0.0, 15, 30, 60]
-        let i = sender.indexOfSelectedItem
-        guard i >= 0, i < options.count else { return }
-        Tuning.maxDuration = options[i]
-    }
     @objc private func tuneRegenerateTapped() {
         NotificationCenter.default.post(name: Tuning.regenerateRequested, object: nil)
     }
     @objc private func tuneResetTapped() {
         Tuning.reset()
         tuningPop?.contentViewController = makeTuningController()
-    }
-    /// 微调对象换选：选哪张就切到哪张当壁纸。`libraryApply` 内部会 rebuild + 重放，
-    /// 实时微调（速度 / 循环 / 明暗）跟着就作用到新那张上，重新生成也对准它。
-    @objc private func tuneTargetChanged(_ sender: NSPopUpButton) {
-        guard let d = delegate else { return }
-        let i = sender.indexOfSelectedItem
-        guard i >= 0, i < d.libraryVideos().count else { return }
-        if i != d.libraryCurrentIndex() {
-            d.libraryApply(index: i)
-        }
     }
 
     private func makeSettingsController() -> NSViewController {

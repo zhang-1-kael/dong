@@ -5,7 +5,7 @@
   <a href="#funzionalità"><strong>Scopri Dòng »</strong></a><br><br>
   <a href="#installazione">Scarica per macOS</a> · <a href="https://dongisgood.coze.site/en">Sito ufficiale ↗</a><br>
   <a href="i18n/it/AI_INSTALL_PROMPT.md"><strong>🤖 Lascia installare a un'IA (il modo più semplice) »</strong></a><br>
-  <i>~ Versione 3.36 · macOS 13 e successivi · Apple Silicon ~</i></p>
+  <i>~ Versione 3.37 · macOS 13 e successivi · Apple Silicon ~</i></p>
   <p>
     <a href="README.en.md">English</a> · <a href="README.zh.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.fr.md">Français</a><br>
     <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <b>Italiano</b> · <a href="README.ru.md">Русский</a>
@@ -22,7 +22,7 @@
 <h6 align="center">
   <a href="i18n/it/AI_INSTALL_PROMPT.md"><img src="https://img.shields.io/badge/AI_Install-Un_messaggio-7B61FF?style=for-the-badge&labelColor=23272A" alt="AI one-message install"></a>
   <a href="https://github.com/zhang-1-kael/dong/blob/main/LICENSE"><img src="https://img.shields.io/badge/Licenza-GPL--3.0-5865F2?style=for-the-badge&labelColor=23272A" alt="GPL-3.0 License"></a>
-  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.36-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.36"></a>
+  <a href="https://github.com/zhang-1-kael/dong/releases"><img src="https://img.shields.io/badge/version-3.37-57F287?style=for-the-badge&labelColor=23272A" alt="Version 3.37"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/macOS-13%2B-23272A?style=for-the-badge&logo=apple&logoColor=white" alt="macOS 13+"></a>
   <a href="https://github.com/zhang-1-kael/dong"><img src="https://img.shields.io/badge/Swift-F05138?style=for-the-badge&labelColor=23272A&logo=swift&logoColor=white" alt="Swift"></a>
   <a href="https://github.com/zhang-1-kael/dong/stargazers"><img src="https://img.shields.io/github/stars/zhang-1-kael/dong?style=for-the-badge&label=Stars&color=FEE75C&labelColor=23272A" alt="Stars"></a>
