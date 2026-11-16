@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>Jedes Video wird zum lebendigen Desktop.<br>
   <a href="#funktionen"><strong>Dòng entdecken »</strong></a><br><br>
-  <a href="#installation">Download für macOS</a> · <a href="https://dongisgood.coze.site/en">Offizielle Website ↗</a><br>
+  <a href="#installation">Download für macOS</a> · <a href="https://dongisgood.coze.site/en">Offizielle Website ↗</a><br>  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661">Nutzergruppe beitreten ↗</a><br>
   <a href="i18n/de/AI_INSTALL_PROMPT.md"><strong>🤖 Von einer KI installieren lassen (am einfachsten) »</strong></a><br>
   <i>~ Version 3.38 · macOS 13 und neuer · Apple Silicon ~</i></p>
   <p>
@@ -258,6 +258,12 @@ Code und Dokumentation stehen unter **GPL-3.0** — siehe [LICENSE](LICENSE). We
 - Die `ffmpeg`- und `yt-dlp`-Binaries sind nicht im Repository. Achtung: offizielle ffmpeg-Builds mit
   `--enable-gpl --enable-nonfree` sind **nicht weiterverbreitbar**; für den Vertrieb auf einen LGPL-Build wechseln
   und den Encoder von `libx264` auf `h264_videotoolbox` umstellen.
+
+---
+
+## Community
+
+Du nutzt Dòng? Komm in die [Nutzergruppe auf Feishu](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661): Feedback teilen, Neuigkeiten erfahren oder einfach vorbeischauen — alle sind willkommen.
 
 ---
 

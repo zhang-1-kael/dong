@@ -52,6 +52,39 @@ ABOUT_TITLE = {
     "it": "L'autore", "ru": "Об авторе",
 }
 
+# User community (Feishu group). Each language: (section title, header link label, section body).
+FEISHU = ("https://applink.feishu.cn/client/chat/chatter/add_by_link"
+          "?link_token=509jbd8d-00fd-43dc-8f27-288214767661")
+COMMUNITY = {
+    "en": ("Community", "Join the user group ↗",
+           "Already using Dòng? Join the [user group on Feishu](" + FEISHU + ") "
+           "to share feedback, get release notes, or just drop by if you're curious. Everyone is welcome."),
+    "zh": ("用户社区", "加入用户群 ↗",
+           "已经在用 Dòng 了？欢迎加入[飞书用户群](" + FEISHU + ")："
+           "提意见、看更新通知，感兴趣的朋友也可以进来逛逛。"),
+    "ja": ("コミュニティ", "ユーザーグループに参加 ↗",
+           "Dòng を使っている方は、[Feishu ユーザーグループ](" + FEISHU + ")へどうぞ。"
+           "ご意見やお知らせの共有、ちょっと覗いてみたい方も歓迎です。"),
+    "ko": ("커뮤니티", "사용자 그룹 참여 ↗",
+           "Dòng을 사용 중이라면 [Feishu 사용자 그룹](" + FEISHU + ")에 오세요. "
+           "의견을 나누고 소식을 받아보거나, 관심이 있어 둘러보시는 분도 환영합니다."),
+    "fr": ("Communauté", "Rejoindre le groupe ↗",
+           "Vous utilisez Dòng ? Rejoignez le [groupe d'utilisateurs sur Feishu](" + FEISHU + ") "
+           "pour partager vos retours, recevoir les annonces, ou simplement passer voir. Tout le monde est bienvenu."),
+    "de": ("Community", "Nutzergruppe beitreten ↗",
+           "Du nutzt Dòng? Komm in die [Nutzergruppe auf Feishu](" + FEISHU + "): "
+           "Feedback teilen, Neuigkeiten erfahren oder einfach vorbeischauen — alle sind willkommen."),
+    "es": ("Comunidad", "Unirse al grupo ↗",
+           "¿Usas Dòng? Únete al [grupo de usuarios en Feishu](" + FEISHU + ") "
+           "para compartir opiniones, recibir novedades o simplemente echar un vistazo. Todo el mundo es bienvenido."),
+    "it": ("Comunità", "Unirsi al gruppo ↗",
+           "Usi Dòng? Unisciti al [gruppo utenti su Feishu](" + FEISHU + ") "
+           "per condividere feedback, ricevere aggiornamenti o semplicemente dare un'occhiata. Tutti sono benvenuti."),
+    "ru": ("Сообщество", "Присоединиться к группе ↗",
+           "Используете Dòng? Присоединяйтесь к [группе пользователей в Feishu](" + FEISHU + "): "
+           "делитесь отзывами, следите за новостями или просто загляните — рады всем."),
+}
+
 # "(Chinese)"-style notes that used to explain the Chinese-only write-up.
 CHINESE_NOTE = re.compile(
     r"\s*(?:\((?:Chinese|Chinesisch|en chino|en chinois|in cinese|중국어|на китайском)\)"
@@ -138,8 +171,23 @@ def localise(fn, lang):
                        t, count=1, flags=re.M)
         assert n == 1, f"{fn}: related-files line not found"
 
+    # 8. user community (Feishu group) — header link + section before About (idempotent)
+    c_title, c_label, c_body = COMMUNITY[lang]
+    # 8a. header: append the group link next to the existing website link
+    head_line = re.search(r"(  <a href=\"#[^\"]+\">.*?</a> · <a href=\"https://dongisgood\.coze\.site/en\">.*?</a>)<br>", t)
+    assert head_line, f"{fn}: header download line not found"
+    if FEISHU not in t:
+        t = (t[:head_line.end(1)] + f'<br>  <a href="{FEISHU}">{c_label}</a>'
+             + t[head_line.end(1):])
+    # 8b. body: a "Community" section immediately before the localized About heading
+    about = re.search(r"^## " + re.escape(ABOUT_TITLE[lang]) + r"$", t, flags=re.M)
+    assert about, f"{fn}: About heading not found"
+    if f"## {c_title}" not in t:
+        section = (f"## {c_title}\n\n{c_body}\n\n---\n\n")
+        t = t[:about.start()] + section + t[about.start():]
+
     p.write_text(t, encoding="utf-8")
-    print(f"{fn:16} → {lang:2} | screenshots, docs, badges, prompt localized")
+    print(f"{fn:16} → {lang:2} | screenshots, docs, badges, prompt, community localized")
 
 
 def main():

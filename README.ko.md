@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>어떤 영상이든 살아 움직이는 데스크톱으로.<br>
   <a href="#기능"><strong>Dòng 살펴보기 »</strong></a><br><br>
-  <a href="#설치">macOS용 다운로드</a> · <a href="https://dongisgood.coze.site/en">공식 웹사이트 ↗</a><br>
+  <a href="#설치">macOS용 다운로드</a> · <a href="https://dongisgood.coze.site/en">공식 웹사이트 ↗</a><br>  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661">사용자 그룹 참여 ↗</a><br>
   <a href="i18n/ko/AI_INSTALL_PROMPT.md"><strong>🤖 AI에게 설치 맡기기 (가장 쉬움) »</strong></a><br>
   <i>~ 버전 3.38 · macOS 13 이상 · Apple Silicon ~</i></p>
   <p>
@@ -257,6 +257,12 @@ CPU 아키텍처, 언어, 이벤트 이름.
   직접 넣은 자료의 저작권은 각자 책임입니다.
 - `ffmpeg`와 `yt-dlp` 바이너리는 저장소에 없습니다. 참고로 `--enable-gpl --enable-nonfree`로 빌드된 공식 ffmpeg는
   **재배포할 수 없습니다**. 배포하려면 LGPL 빌드로 바꾸고 인코더를 `libx264`에서 `h264_videotoolbox`로 변경하세요.
+
+---
+
+## 커뮤니티
+
+Dòng을 사용 중이라면 [Feishu 사용자 그룹](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661)에 오세요. 의견을 나누고 소식을 받아보거나, 관심이 있어 둘러보시는 분도 환영합니다.
 
 ---
 

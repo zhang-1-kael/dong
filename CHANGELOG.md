@@ -14,6 +14,15 @@
 
 ## Unreleased（合成下一个版本统一发布）
 
+### D1 · GitHub README 增加飞书用户群入口 — 状态：`已上线（文档，无需发版）`
+- **日期**：2026-11-16
+- **行为**：10 份 README（英/中/日/韩/法/德/西/意/俄 + 英文默认页）顶部入口区新增「加入用户群 ↗」链接，正文 About 前新增本地化的「用户社区 / Community」章节，说明该飞书群供下载用户提意见、接收通知，感兴趣者也可加入。群链接：`https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661`（飞书加群链接，长期有效）。
+- **改动文件**：
+  - `tools/gen_i18n_readme.py` → 新增 `FEISHU` / `COMMUNITY`（9 语言文案）与步骤 8：顶部链接 + About 前社区章节，幂等插入。
+  - `README.md`、`README.en.md`、`README.zh.md`、`README.ja.md`、`README.ko.md`、`README.fr.md`、`README.de.md`、`README.es.md`、`README.it.md`、`README.ru.md` → 由脚本重新生成。
+- **验证（2026-11-16）**：脚本连跑两次幂等；10 份 README 各含 2 处群链接（顶部 + 章节）、章节标题按语言本地化且位于 About 之前；无中文残留；未触碰版本号与 App 二进制。
+- **状态**：已 commit + push 到 main，CI 通过；纯文档改动，不随 App 发版。
+
 ### F1 · 图片 / 静态壁纸支持 — 状态：`已验证`
 - **日期**：2026-11-13
 - **行为**：拖入或选择的图片直接做成静止壁纸，不套视频的去跳帧 / 去片尾 / 掐黑场流程。

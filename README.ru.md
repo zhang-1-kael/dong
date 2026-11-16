@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>Любое видео — живые обои.<br>
   <a href="#возможности"><strong>Посмотреть Dòng »</strong></a><br><br>
-  <a href="#установка">Скачать для macOS</a> · <a href="https://dongisgood.coze.site/en">Официальный сайт ↗</a><br>
+  <a href="#установка">Скачать для macOS</a> · <a href="https://dongisgood.coze.site/en">Официальный сайт ↗</a><br>  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661">Присоединиться к группе ↗</a><br>
   <a href="i18n/ru/AI_INSTALL_PROMPT.md"><strong>🤖 Пусть ИИ установит за меня (самый простой способ) »</strong></a><br>
   <i>~ Версия 3.38 · macOS 13 и выше · Apple Silicon ~</i></p>
   <p>
@@ -258,6 +258,12 @@ VideoWallpaper --link "https://…"         # скачивание по ссыл
 - Бинарники `ffmpeg` и `yt-dlp` в репозитории отсутствуют. Внимание: официальные сборки ffmpeg с
   `--enable-gpl --enable-nonfree` **нельзя распространять**; для распространения берите сборку LGPL
   и меняйте кодировщик с `libx264` на `h264_videotoolbox`.
+
+---
+
+## Сообщество
+
+Используете Dòng? Присоединяйтесь к [группе пользователей в Feishu](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661): делитесь отзывами, следите за новостями или просто загляните — рады всем.
 
 ---
 

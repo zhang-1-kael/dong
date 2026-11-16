@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>把任何视频，变成会动的桌面。<br>
   <a href="#功能"><strong>探索 Dòng »</strong></a><br><br>
-  <a href="#安装">下载 for macOS</a> · <a href="https://dongisgood.coze.site/en">访问官网 ↗</a><br>
+  <a href="#安装">下载 for macOS</a> · <a href="https://dongisgood.coze.site/en">访问官网 ↗</a><br>  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661">加入用户群 ↗</a><br>
   <a href="i18n/zh/AI_INSTALL_PROMPT.md"><strong>🤖 让 AI 帮我装好（最省事） »</strong></a><br>
   <i>~ 版本 3.38 · macOS 13 及更高版本 · Apple Silicon ~</i></p>
   <p>
@@ -258,6 +258,12 @@ CPU 架构、语言、事件名。
 - `ffmpeg` 与 `yt-dlp` 二进制不在仓库内。注意：官方 ffmpeg 的
   `--enable-gpl --enable-nonfree` 构建**不可再分发**，对外分发应换 LGPL 构建
   并把编码器从 `libx264` 换成 `h264_videotoolbox`。
+
+---
+
+## 用户社区
+
+已经在用 Dòng 了？欢迎加入[飞书用户群](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661)：提意见、看更新通知，感兴趣的朋友也可以进来逛逛。
 
 ---
 

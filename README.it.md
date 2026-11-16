@@ -3,7 +3,7 @@
   <h1><b>Dòng</b></h1>
   <p>Trasforma qualsiasi video in una scrivania viva.<br>
   <a href="#funzionalità"><strong>Scopri Dòng »</strong></a><br><br>
-  <a href="#installazione">Scarica per macOS</a> · <a href="https://dongisgood.coze.site/en">Sito ufficiale ↗</a><br>
+  <a href="#installazione">Scarica per macOS</a> · <a href="https://dongisgood.coze.site/en">Sito ufficiale ↗</a><br>  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661">Unirsi al gruppo ↗</a><br>
   <a href="i18n/it/AI_INSTALL_PROMPT.md"><strong>🤖 Lascia installare a un'IA (il modo più semplice) »</strong></a><br>
   <i>~ Versione 3.38 · macOS 13 e successivi · Apple Silicon ~</i></p>
   <p>
@@ -258,6 +258,12 @@ Codice e documentazione sono sotto licenza **GPL-3.0** — vedi [LICENSE](LICENS
 - I binari `ffmpeg` e `yt-dlp` non sono nel repository. Nota: le build ufficiali di ffmpeg con
   `--enable-gpl --enable-nonfree` **non possono essere ridistribuite**; per la distribuzione passa a una build LGPL
   e cambia l'encoder da `libx264` a `h264_videotoolbox`.
+
+---
+
+## Comunità
+
+Usi Dòng? Unisciti al [gruppo utenti su Feishu](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=509jbd8d-00fd-43dc-8f27-288214767661) per condividere feedback, ricevere aggiornamenti o semplicemente dare un'occhiata. Tutti sono benvenuti.
 
 ---
 
