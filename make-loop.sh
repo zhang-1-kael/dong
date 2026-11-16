@@ -63,6 +63,25 @@ fi
 
 echo "时长=${DUR}s 原帧率=${FPS} → 统一 ${CFR}fps，淡化 ${FADE}s → ${SIZE}，成片 ${CUT}s"
 
+# ── PerfectLoop：fade>0 且运行器 + python 依赖齐全时，用 SSIM 区域感知形变代替 blend ──
+# 只对首尾不同的区域做加权形变，接缝比整段线性溶解自然得多。任一条件不满足就回退 blend。
+MORPH=$(awk "BEGIN{printf \"%d\", ($FADE*$CFR)+0.5}")
+MORPH=$(( MORPH < 4 ? 4 : MORPH ))
+PL_RUNNER="$(dirname "$0")/tools/perfectloop_runner.py"
+if [[ -z "$MASK" && -f "$PL_RUNNER" && -x "$(command -v python3)" ]]; then
+  if python3 "$PL_RUNNER" --check >/dev/null 2>&1; then
+    echo "→ 改用 PerfectLoop SSIM 形变无缝循环（morph ${MORPH} 帧）"
+    if python3 "$PL_RUNNER" "$IN" "$OUT" \
+      --width "$WIDTH" --height "$HEIGHT" --fps "$CFR" --crf "$CRF" \
+      --start 0 --duration "$DUR" --morph_steps "$MORPH" \
+      --ffmpeg "$FF" ${PRECROP:+"--precrop $PRECROP"}; then
+      echo "完成: $OUT"
+      exit 0
+    fi
+    echo "PerfectLoop 执行失败，回退到内置 blend 交叉淡化…"
+  fi
+fi
+
 $FF -hide_banner -loglevel error -y -i "$IN" -filter_complex "\
 [0:v]${BASE},split=3[s0][s1][s2];\
 [s0]trim=start=0:end=${FADE},setpts=PTS-STARTPTS,setsar=1[b];\

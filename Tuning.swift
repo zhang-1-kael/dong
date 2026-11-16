@@ -20,6 +20,8 @@ enum Tuning {
         static let outputFPS = "outputFPS"
         static let fade = "fade"
         static let maxDuration = "maxDuration"
+        /// 是否用 PerfectLoop（SSIM 形变）代替内置 blend 交叉淡化做无缝循环
+        static let usePerfectLoop = "usePerfectLoop"
     }
 
     static let changed = Notification.Name("VWTuningChanged")
@@ -99,6 +101,22 @@ enum Tuning {
     static var maxDuration: Double {
         get { max(0, read(Key.maxDuration, 0)) }
         set { write(Key.maxDuration, max(0, newValue)) }
+    }
+
+    /// 是否用 PerfectLoop（SSIM 区域感知形变）代替内置 blend 交叉淡化做无缝循环。默认开。
+    /// 本机若没有带 numpy / opencv / scikit-image 的 python3，会自动回退到 blend，
+    /// 这个开关用来强制关闭 PerfectLoop（例如想和旧版行为完全一致时）。
+    static var usePerfectLoop: Bool {
+        get {
+            let ud = UserDefaults.standard
+            guard ud.object(forKey: prefix + Key.usePerfectLoop) != nil else { return true }
+            return ud.bool(forKey: prefix + Key.usePerfectLoop)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: prefix + Key.usePerfectLoop)
+            NotificationCenter.default.post(name: changed, object: nil,
+                                            userInfo: ["key": Key.usePerfectLoop])
+        }
     }
 
     /// 转码用的实际帧率。默认沿袭老策略（跟随源、上限 30），选了档位才覆盖

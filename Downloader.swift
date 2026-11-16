@@ -77,12 +77,123 @@ final class Downloader {
         return false
     }
 
-    // MARK: 下载
+    // MARK: 平台判定 / 浏览器探测
+
+    /// 是不是抖音系链接：v.douyin.com 短链、www.douyin.com 正链、iesdouyin.com 分享页。
+    /// 抖音的 a_bogus / msToken 签名墙要的是 `s_v_web_id` 这个游客 cookie，得借浏览器。
+    static func isDouyin(_ link: String) -> Bool {
+        let host = (URL(string: link)?.host ?? "").lowercased()
+        return host.contains("douyin.com") || host.contains("iesdouyin.com")
+    }
+
+    /// 抖音把视频和图文的分享直链都写成 `/note/<id>`，但 yt-dlp 的 douyin extractor
+    /// 只认 `/video/<id>`——note 路径会直接报 `Unsupported URL`，连借 cookie 那关都走不到。
+    /// 同一个 aweme_id 两条路径指向同一条内容，所以下载前把 note 归一化成 video。
+    /// 纯图文笔记（只有图片没有视频）转成 video 后没有视频流，交给下载阶段的报错/引导处理。
+    static func normalizeDouyinLink(_ link: String) -> String {
+        guard var c = URLComponents(string: link),
+              let host = c.host?.lowercased(), host.contains("douyin.com"),
+              c.path.hasPrefix("/note/") else { return link }
+        c.path = "/video/" + String(c.path.dropFirst("/note/".count))
+        return c.string ?? link
+    }
+
+    /// 本机装了哪些能借 cookie 的浏览器（按成功率高到低排序）。
+    /// 只列 cookie 库真实存在的，免得 yt-dlp 对每个没装的浏览器都白跑一遍、刷一屏报错。
+    /// Chrome 系取 Default 配置；多用户场景若主配置没访问过抖音，可能因缺少 s_v_web_id 失败，
+    /// 届时的引导文案会告诉用户怎么办。
+    static func availableCookieBrowsers() -> [String] {
+        let fm = FileManager.default
+        let h = NSHomeDirectory()
+        let candidates: [(String, [String])] = [
+            ("chrome",  ["\(h)/Library/Application Support/Google/Chrome/Default/Cookies"]),
+            ("edge",    ["\(h)/Library/Application Support/Microsoft Edge/Default/Cookies"]),
+            ("brave",   ["\(h)/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies"]),
+            ("vivaldi", ["\(h)/Library/Application Support/Vivaldi/Default/Cookies"]),
+            ("firefox", ["\(h)/Library/Application Support/Firefox/Profiles"]),
+            ("safari",  ["\(h)/Library/Cookies/Cookies.binarycookies"]),
+        ]
+        return candidates
+            .filter { $0.1.contains { fm.fileExists(atPath: $0) } }
+            .map { $0.0 }
+    }
+
+    private static func displayName(_ browser: String) -> String {
+        ["chrome": "Chrome", "edge": "Edge", "brave": "Brave", "vivaldi": "Vivaldi",
+         "firefox": "Firefox", "safari": "Safari"][browser] ?? browser
+    }
+
+    // MARK: 下载入口
 
     func fetch(_ link: String, into dir: URL, ffmpeg: URL?) throws -> URL {
-        let fm = FileManager.default
-        // 入口统一清洗一次：用户贴进来的可能是「标题 + 链接」一整段，只把链接交给 yt-dlp
+        // 入口统一清洗一次：用户贴进来的可能是「标题 + 链接」一整段，只取链接部分。
+        // 注意：抖音**不要**再做 /note/ → /video/ 归一化。那是 F4（yt-dlp）时代的遗留，
+        // WKWebView 方案是靠加载用户给的原页面来截获详情接口的，/note/ 页面才是
+        // 实况图（image_post_info.images[].video）的正确来源，转成 /video/ 反而会
+        // 拿到背景音乐音频流、后续转码找不到画面。
         let link = Downloader.extractLink(link)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        if Downloader.isDouyin(link) {
+            // 抖音改用内置 WKWebView 抓取：让抖音自己的 JS 完成 Argus 签名，
+            // 我们从详情接口响应里取视频 / 实况图直链。yt-dlp 路线已确认走不通。
+            let fetcher = DouyinWebFetcher()
+            return try fetcher.fetch(link, into: dir, ffmpeg: ffmpeg, onStage: self.onStage)
+        }
+        DispatchQueue.main.async { self.onStage?("正在解析链接…") }
+        return try downloadOnce(link, into: dir, ffmpeg: ffmpeg, browser: nil)
+    }
+
+    /// 抖音：借用本机浏览器的游客 cookie 逐个尝试。
+    ///
+    /// 实测结论（2026-11）：yt-dlp 的抖音 extractor 复用 TikTok 逻辑，真正卡人的是
+    /// `Fresh cookies (not necessarily logged in) are needed`——要的是 `s_v_web_id`
+    /// 这个游客 cookie，**不需要登录**，但要求用户最近在浏览器里打开过抖音网页。
+    /// 所以这里不弹「必须登录」这种误导文案，而是自动借、失败时给出能照做的引导。
+    private func fetchDouyin(_ link: String, into dir: URL, ffmpeg: URL?) throws -> URL {
+        let browsers = Downloader.availableCookieBrowsers()
+        guard !browsers.isEmpty else { throw Failure(message: Self.guideNoBrowser) }
+
+        var lastDetail = ""
+        for browser in browsers {
+            DispatchQueue.main.async {
+                self.onStage?("正在借 \(Self.displayName(browser)) 的浏览记录解析…")
+            }
+            do {
+                return try downloadOnce(link, into: dir, ffmpeg: ffmpeg, browser: browser)
+            } catch let f as Failure {
+                lastDetail = f.message
+                // 清掉这次失败留下的空壳/半成品，免得下一个浏览器成功后取到错误文件
+                try? FileManager.default.removeItem(at: dir)
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            }
+        }
+        throw Failure(message: Self.guideWithDetail(lastDetail))
+    }
+
+    /// 用户没装任何主流浏览器时，没法借 cookie。
+    private static let guideNoBrowser =
+        "没检测到 Chrome / Safari 等浏览器，借不到抖音需要的浏览记录。"
+        + "请先在浏览器打开一次抖音网页，或把视频在抖音 App 里存到本地、再拖进 Dòng。"
+
+    /// 借了 cookie 仍失败——把「先打开一次抖音网页」这句可操作的话放最前面。
+    private static func guideWithDetail(_ detail: String) -> String {
+        let tail = detail.isEmpty ? "" : "（上次失败：\(tidy(detail))）"
+        return "抖音的视频需要一份新鲜的浏览记录才能抓取，不用登录。"
+            + "请在 Chrome 里打开一次抖音网页、随便看一个视频，然后回到 Dòng 重新粘贴链接。"
+            + "若刚打开过仍不行，把视频在抖音 App 里存到本地、再拖进 Dòng。"
+            + "注意：纯图文笔记（只有图片、没有视频）无法做成动态壁纸。" + tail
+    }
+
+    /// 失败详情压成一行、限长，避免引导文案被 yt-dlp 的整段报错撑爆。
+    private static func tidy(_ s: String) -> String {
+        let one = s.split(separator: "\n").last.map(String.init) ?? s
+        return one.count > 90 ? String(one.prefix(90)) + "…" : one
+    }
+
+    /// 真正跑一次 yt-dlp。browser 为 nil 表示不借 cookie（B站 / YouTube 等普通平台）。
+    private func downloadOnce(_ link: String, into dir: URL, ffmpeg: URL?, browser: String?) throws -> URL {
+        let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
 
         // 只要视频流（壁纸不需要声音）；优先 h264，AVFoundation 解起来最稳，
@@ -99,10 +210,11 @@ final class Downloader {
             "--remux-video", "mp4",
             "-o", dir.appendingPathComponent("%(title).70s.%(ext)s").path,
         ]
+        // 抖音唯一的通行证：借浏览器的游客 cookie（含 s_v_web_id）。
+        // 其他平台不传，行为与改动前完全一致。
+        if let browser { args += ["--cookies-from-browser", browser] }
         if let ffmpeg { args += ["--ffmpeg-location", ffmpeg.path] }
         args.append(link)
-
-        DispatchQueue.main.async { self.onStage?("正在解析链接…") }
 
         let p = Process()
         p.executableURL = tool
@@ -144,13 +256,6 @@ final class Downloader {
 
         guard p.terminationStatus == 0 else {
             lock.lock(); let tail = errors; lock.unlock()
-            // 抖音这类平台有 a_bogus 反爬，yt-dlp 会抛
-            // "Fresh cookies (not necessarily logged in) are needed"。
-            // 原话对用户没有意义，翻译成一句能照着做的。
-            if link.lowercased().contains("douyin") || tail.localizedCaseInsensitiveContains("cookie") {
-                throw Failure(message: "这个平台的视频要登录后才能抓取（抖音有反爬，必须带登录态）。"
-                    + "请先在 App 里把视频保存到本地，再拖进 Dòng。")
-            }
             let brief = tail
                 .split(separator: "\n")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -159,7 +264,7 @@ final class Downloader {
                 .joined(separator: "；")
             throw Failure(message: brief.isEmpty
                 ? "下载失败。链接可能不合法，或者这个视频需要登录才能看。"
-                : "下载失败：\(brief)")
+                : brief)
         }
 
         // 取目录里最大的那个视频，就是正片

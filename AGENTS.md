@@ -46,3 +46,20 @@ Repo: <https://github.com/zhang-1-kael/dong> · Site: <https://dongisgood.coze.s
   in English because they are machine-facing.
 - AI-assisted contributions: disclose and review line by line (`AI_POLICY.md`).
 - Dual licensed: GPL-3.0 (`LICENSE`) or commercial (`COMMERCIAL.md`).
+
+## Release workflow — read before changing code
+
+The user develops several small features across separate tasks/sessions and ships
+**one consolidated release** at the end. Never cut a release on your own.
+
+- After **every** code change, append an entry to `CHANGELOG.md` under `## Unreleased`:
+  date, feature, files touched, behaviour change, verification result, and status
+  (`待发布` / `已验证` / `有风险` / `待决策`). Append-only — never delete someone
+  else's entry, and read existing entries first so overlapping edits are not lost.
+- Also append a short note to the workspace daily log
+  (`../.workbuddy/memory/YYYY-MM-DD.md`, one level above this repo).
+- Version fields live in `Info.plist` (`CFBundleShortVersionString`,
+  `CFBundleVersion`). **Do not bump them** until the user asks for the consolidated
+  release.
+- `CHANGELOG.md` also carries the merge/release checklist; consult it before running
+  `package.sh` / `sign-notarize.sh`.

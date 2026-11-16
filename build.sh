@@ -9,8 +9,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 
 echo "==> 编译 Swift"
 swiftc -O -o "$APP/Contents/MacOS/VideoWallpaper" \
-  main.swift Downloader.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift Tuning.swift \
-  -framework Cocoa -framework AVFoundation
+  main.swift Downloader.swift DouyinWebFetcher.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift Tuning.swift \
+  -framework Cocoa -framework AVFoundation -framework WebKit
 
 echo "==> 组装 App Bundle"
 cp Info.plist "$APP/Contents/Info.plist"
@@ -58,6 +58,21 @@ if [ -f "$YTDLP" ]; then
   xattr -c "$APP/Contents/Resources/bin/yt-dlp" 2>/dev/null || true
 else
   echo "!! 没有 vendor/yt-dlp_macos：链接下载功能会退回使用系统里的 yt-dlp"
+fi
+
+# PerfectLoop 无缝循环：把运行器 + 核心源码打进 bundle。
+# 转码时若本机有带 numpy/opencv/scikit-image 的 python3，就用它代替内置 blend 交叉淡化；
+# 没有则自动回退。PerfectLoop 为 MIT 许可，源码与 LICENSE 一并打包。
+if [ -f tools/perfectloop_runner.py ]; then
+  echo "==> 内置 PerfectLoop 运行器 + 核心源码"
+  mkdir -p "$APP/Contents/Resources/tools/PerfectLoop/src"
+  cp tools/perfectloop_runner.py "$APP/Contents/Resources/tools/"
+  cp tools/PerfectLoop/*.py "$APP/Contents/Resources/tools/PerfectLoop/" 2>/dev/null
+  cp tools/PerfectLoop/src/*.py "$APP/Contents/Resources/tools/PerfectLoop/src/" 2>/dev/null
+  cp tools/PerfectLoop/LICENSE "$APP/Contents/Resources/tools/PerfectLoop/" 2>/dev/null
+  xattr -c "$APP/Contents/Resources/tools"/* 2>/dev/null || true
+else
+  echo "!! 没有 tools/perfectloop_runner.py：PerfectLoop 无缝循环功能不可用（自动回退 blend）"
 fi
 
 # App 图标：存在就装进 bundle（Info.plist 里 CFBundleIconFile = AppIcon）

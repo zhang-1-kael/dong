@@ -1,9 +1,16 @@
 import Foundation
 import AVFoundation
 import Cocoa
+import ImageIO
 
 /// 视频自动优化：统一帧率 → 按屏幕比例裁切 → 轻微锐化 → 首尾交叉淡化做成无缝循环 → 压缩
 final class Transcoder {
+
+    /// 支持的静态图片格式。用户给图片时不做成会动的视频，直接当静态壁纸用。
+    /// GIF 也归到这里：只取第一帧，不做成动画。
+    static let imageExts: Set<String> = [
+        "jpg", "jpeg", "png", "heic", "heif", "webp", "tiff", "tif", "bmp", "gif"
+    ]
 
     struct Info {
         var duration: Double
@@ -35,6 +42,51 @@ final class Transcoder {
         }
         return nil
     }
+
+    // MARK: PerfectLoop（SSIM 区域感知形变无缝循环）
+
+    /// PerfectLoop 运行时：找到一个「能跑通依赖」的 python3 + 运行器。
+    /// 懒加载并缓存；找不到（任何候选 python 都缺 numpy / opencv / scikit-image）则为 nil，转码回退 blend。
+    /// 顺序：先本 App 专用 venv（一键装依赖用），再系统常见 python3。
+    private static var _perfectLoopRuntime: (python: URL, runner: URL)?
+    static var perfectLoopRuntime: (python: URL, runner: URL)? {
+        if let cached = _perfectLoopRuntime { return cached }
+        let fm = FileManager.default
+        let runnerCandidates: [URL?] = [
+            Bundle.main.url(forResource: "perfectloop_runner", withExtension: "py", subdirectory: "tools"),
+            Bundle.main.url(forResource: "perfectloop_runner", withExtension: "py"),
+            URL(fileURLWithPath: "tools/perfectloop_runner.py"),
+        ]
+        guard let runner = runnerCandidates.first(where: { $0 != nil && fm.isExecutableFile(atPath: $0!.path) }) else {
+            _perfectLoopRuntime = nil
+            return nil
+        }
+        let pyCandidates = [
+            LockScreen.home.appendingPathComponent(".local/share/VideoWallpaper/perfectloop-venv/bin/python3"),
+            LockScreen.home.appendingPathComponent(".local/bin/python3"),
+            URL(fileURLWithPath: "/opt/homebrew/bin/python3"),
+            URL(fileURLWithPath: "/usr/bin/python3"),
+        ]
+        for py in pyCandidates where fm.isExecutableFile(atPath: py.path) {
+            let p = Process()
+            p.executableURL = py
+            p.arguments = [runner!.path, "--check"]
+            p.standardInput = FileHandle.nullDevice
+            p.standardOutput = Pipe()
+            p.standardError = Pipe()
+            guard (try? p.run()) != nil else { continue }
+            p.waitUntilExit()
+            if p.terminationStatus == 0 {
+                _perfectLoopRuntime = (python: py, runner: runner!)
+                return _perfectLoopRuntime
+            }
+        }
+        _perfectLoopRuntime = nil
+        return nil
+    }
+
+    /// 运行时是否可用（存在能跑依赖的 python + 运行器）。
+    static func perfectLoopAvailable() -> Bool { perfectLoopRuntime != nil }
 
     // MARK: 探测
 
@@ -510,6 +562,24 @@ final class Transcoder {
         }
         pipe += ",setsar=1"
 
+        // PerfectLoop：fade>0 且运行时（python + 依赖 + 运行器）齐全时，
+        // 用「SSIM 区域感知形变」代替下面的 ffmpeg blend 交叉淡化 —— 只对首尾不同的区域做加权形变，
+        // 相似区域直接淡入首帧，接缝比整段线性溶解自然得多。任一环节失败都回退到 blend。
+        if Tuning.usePerfectLoop, fade > 0,
+           let rt = Self.perfectLoopRuntime {
+            do {
+                onStage?("优化中（\(size.w)×\(size.h)，\(cfr) fps，PerfectLoop 无缝循环）…")
+                try runPerfectLoop(input: input, output: output,
+                                   start: s, duration: dur, size: size, cfr: cfr,
+                                   watermark: watermark, fade: fade,
+                                   python: rt.python, runner: rt.runner)
+                return
+            } catch {
+                onStage?("PerfectLoop 不可用，回退到内置交叉淡化…")
+                // 继续往下走 ffmpeg blend 流程
+            }
+        }
+
         if fade > 0 {
             // 首尾淡化分三段、各自独立 seek 取：片尾 fade、片头 fade、中间主体。
             //
@@ -610,7 +680,172 @@ final class Transcoder {
         }
     }
 
+    // MARK: PerfectLoop 子进程
+
+    /// 调 perfectloop_runner.py：对 [start, start+duration] 这段主体做 SSIM 形变无缝循环，
+    /// 输出 h264 mp4（参数与内置转码一致）。从 stdout 解析 `progress=` 刷新进度条。
+    private func runPerfectLoop(input: URL, output: URL, start: Double, duration: Double,
+                               size: (w: Int, h: Int), cfr: Int, watermark: Watermark?,
+                               fade: Double, python: URL, runner: URL) throws {
+        let morphSteps = max(4, Int((fade * Double(cfr)).rounded()))
+        var args: [String] = [
+            runner.path, input.path, output.path,
+            "--width", "\(size.w)", "--height", "\(size.h)",
+            "--fps", "\(cfr)", "--crf", "18",
+            "--start", String(format: "%.3f", start),
+            "--duration", String(format: "%.3f", duration),
+            "--morph_steps", "\(morphSteps)",
+            "--ffmpeg", ffmpeg.path,
+        ]
+        if let wm = watermark {
+            let dx = max(1, min(wm.x, size.w - wm.w - 2))
+            let dy = max(1, min(wm.y, size.h - wm.h - 2))
+            args += ["--delogo", "\(dx):\(dy):\(wm.w):\(wm.h)"]
+        }
+
+        try? FileManager.default.removeItem(at: output)
+
+        let p = Process()
+        p.executableURL = python
+        p.arguments = args
+        p.standardInput = FileHandle.nullDevice
+        let out = Pipe()
+        p.standardOutput = out
+        let errPipe = Pipe()
+        p.standardError = errPipe
+        let errLock = NSLock()
+        var errTail = Data()
+        errPipe.fileHandleForReading.readabilityHandler = { fh in
+            let chunk = fh.availableData
+            guard !chunk.isEmpty else { return }
+            errLock.lock()
+            errTail.append(chunk)
+            if errTail.count > 4096 { errTail = errTail.suffix(4096) }
+            errLock.unlock()
+        }
+
+        var buffer = Data()
+        out.fileHandleForReading.readabilityHandler = { fh in
+            let chunk = fh.availableData
+            guard !chunk.isEmpty else { return }
+            buffer.append(chunk)
+            while let nl = buffer.firstIndex(of: 0x0A) {
+                let line = buffer[..<nl]
+                buffer.removeSubrange(...nl)
+                guard let s = String(data: line, encoding: .utf8) else { continue }
+                if s.hasPrefix("progress="), let v = Double(s.dropFirst(9)) {
+                    self.callbackQueue.async { self.onProgress?(min(1.0, max(0.0, v))) }
+                }
+            }
+        }
+
+        try p.run()
+        p.waitUntilExit()
+        out.fileHandleForReading.readabilityHandler = nil
+        errPipe.fileHandleForReading.readabilityHandler = nil
+
+        if p.terminationStatus != 0 {
+            try? FileManager.default.removeItem(at: output)
+            errLock.lock()
+            let detail = String(data: errTail, encoding: .utf8)?
+                .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }.suffix(1).joined() ?? ""
+            errLock.unlock()
+            throw NSError(domain: "Transcoder", code: Int(p.terminationStatus),
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "PerfectLoop 处理失败" + (detail.isEmpty ? "" : "：\(detail)")])
+        }
+    }
+
     /// 一步到位：优化并放进壁纸库，返回新文件
+    // MARK: 图片 → 静态壁纸
+
+    /// 图片不硬做成「会动的视频」：先归一成一张不透明 PNG，再编码成 2 秒 30fps 的
+    /// 静帧 mp4。播放器循环到的永远是同一帧，画面完全静止；但缩略图、卡片、切换、
+    /// 轮播、锁屏跟随这些既有链路依旧全部照常工作，播放层一行都不用改。
+    /// 刻意不走 importVideo：片头片尾检测、掐黑场、首尾淡化都是给视频用的，
+    /// 拿去处理一张纯色图只会帮倒忙。
+    func importStillImage(source: URL, into libraryDir: URL) throws -> URL {
+        onStage?("读取图片…")
+        let flat = try Self.flattenImage(source)
+        defer { try? FileManager.default.removeItem(at: flat.url) }
+
+        let size = Self.targetSize(for: Info(duration: 2, fps: 30,
+                                             width: flat.width, height: flat.height))
+        var name = source.deletingPathExtension().lastPathComponent
+        name = name.replacingOccurrences(of: "/", with: "-")
+            .trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { name = "壁纸" }
+        var dest = libraryDir.appendingPathComponent(name + ".mp4")
+        var n = 2
+        while FileManager.default.fileExists(atPath: dest.path) {
+            dest = libraryDir.appendingPathComponent("\(name) \(n).mp4")
+            n += 1
+        }
+
+        onStage?("做成静态壁纸…")
+        let r = run([
+            "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-loop", "1", "-framerate", "30", "-i", flat.url.path,
+            "-t", "2",
+            "-vf", "scale=\(size.w):\(size.h):flags=lanczos,format=yuv420p",
+            "-an", "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p",
+            "-crf", "18", "-preset", "medium", "-r", "30",
+            "-movflags", "+faststart", dest.path,
+        ])
+        guard r.code == 0, FileManager.default.fileExists(atPath: dest.path) else {
+            try? FileManager.default.removeItem(at: dest)
+            let why = String(r.err.trimmingCharacters(in: .whitespacesAndNewlines).prefix(160))
+            throw NSError(domain: "Transcoder", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey:
+                            "这张图片没能做成壁纸" + (why.isEmpty ? "" : "：\(why)")])
+        }
+        onStage?("生成缩略图…")
+        _ = Thumbs.image(for: dest)
+        return dest
+    }
+
+    /// ImageIO 解码任意图片 → 一张不透明的临时 PNG。
+    /// - CreateThumbnailAtIndex + WithTransform 让 HEIC / 手机照片的 EXIF 方向自动摆正；
+    /// - 画到黑底上抹掉 alpha：透明 PNG 直接进 H.264，透明区域会花屏；
+    /// - 统一成 PNG 后 ffmpeg 不用自带 heif / webp 解码器也能处理。
+    private static func flattenImage(_ url: URL) throws -> (url: URL, width: Int, height: Int) {
+        let fail = NSError(domain: "Transcoder", code: 4,
+                           userInfo: [NSLocalizedDescriptionKey:
+                            "读不出这张图片，可能格式不支持或文件损坏"])
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw fail }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: 8000,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+                ?? CGImageSourceCreateImageAtIndex(src, 0, nil) else { throw fail }
+        let w = cg.width, h = cg.height
+        guard w > 0, h > 0 else { throw fail }
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+        else { throw fail }
+        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let flat = ctx.makeImage() else { throw fail }
+
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vw-still-\(UUID().uuidString).png")
+        guard let dst = CGImageDestinationCreateWithURL(tmp as CFURL,
+                                                        "public.png" as CFString, 1, nil)
+        else { throw fail }
+        CGImageDestinationAddImage(dst, flat, nil)
+        guard CGImageDestinationFinalize(dst) else {
+            try? FileManager.default.removeItem(at: tmp)
+            throw fail
+        }
+        return (tmp, w, h)
+    }
+
     func importVideo(source: URL, into libraryDir: URL) throws -> URL {
         guard let info = Self.probe(source) else {
             throw NSError(domain: "Transcoder", code: 2,

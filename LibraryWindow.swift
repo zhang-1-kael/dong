@@ -590,7 +590,7 @@ final class GalleryView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     private func acceptFiles(from sender: NSDraggingInfo) -> Bool {
-        !ShellView.videoURLs(from: sender.draggingPasteboard).isEmpty
+        !ShellView.mediaURLs(from: sender.draggingPasteboard).isEmpty
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -609,7 +609,7 @@ final class GalleryView: NSView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let files = ShellView.videoURLs(from: sender.draggingPasteboard)
+        let files = ShellView.mediaURLs(from: sender.draggingPasteboard)
         accepts = false
         onDragStateChange?(false)
         guard !files.isEmpty else { return false }
@@ -1662,11 +1662,12 @@ final class ShellView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    static func videoURLs(from pasteboard: NSPasteboard) -> [URL] {
+    /// 拖进来的既可以是视频，也可以是图片（图片做成静态壁纸）。
+    static func mediaURLs(from pasteboard: NSPasteboard) -> [URL] {
         let opts: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         guard let items = pasteboard.readObjects(forClasses: [NSURL.self], options: opts) as? [URL]
         else { return [] }
-        let exts: Set<String> = ["mp4", "mov", "m4v"]
+        let exts = Source.videoExts.union(Transcoder.imageExts)
         var out: [URL] = []
         for u in items {
             var isDir: ObjCBool = false
@@ -1682,7 +1683,7 @@ final class ShellView: NSView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        accepts = !Self.videoURLs(from: sender.draggingPasteboard).isEmpty
+        accepts = !Self.mediaURLs(from: sender.draggingPasteboard).isEmpty
         onDragStateChange?(accepts)
         return accepts ? .copy : []
     }
@@ -1697,7 +1698,7 @@ final class ShellView: NSView {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let files = Self.videoURLs(from: sender.draggingPasteboard)
+        let files = Self.mediaURLs(from: sender.draggingPasteboard)
         accepts = false
         onDragStateChange?(false)
         guard !files.isEmpty else { return false }
@@ -2011,6 +2012,11 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let tip = DockTip()
         dockTip = tip
 
+        // 从电脑里挑视频 / 图片：常驻入口。空状态里那个按钮只在库空时才看得到，
+        // 库里有壁纸之后也得有个地方能继续添加。
+        let addPill = SettingPill(actionTitle: "添加文件", symbol: "plus")
+        addPill.onTap = { [weak self] in self?.pickFiles() }
+
         // 打开文件夹：同款胶囊，但不是开关，跟开关之间用一条细线隔开
         let folderPill = SettingPill(actionTitle: "打开文件夹", symbol: "folder")
         folderPill.onTap = { [weak self] in self?.delegate?.libraryRevealFolder() }
@@ -2031,7 +2037,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         appearancePill.offSymbol = "sunmax.fill"
         appearancePill.onToggle = { on in LibraryBackdrop.darkMode = on }
 
-        for p in [enabledPill, lockPill, autoPill, folderPill, settingsPill, appearancePill] {
+        for p in [enabledPill, lockPill, autoPill, addPill, folderPill, settingsPill, appearancePill] {
             p.onHoverChange = { [weak self, weak p] on in
                 guard let self, let p else { return }
                 on ? self.showTip(for: p) : self.dockTip?.hide()
@@ -2088,7 +2094,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
         let pills = NSStackView(views: [transparencyRow, makeDivider(),
                                         enabledPill, lockPill, autoPill, divider,
-                                        folderPill, settingsPill, appearancePill])
+                                        addPill, folderPill, settingsPill, appearancePill])
         pills.orientation = .horizontal
         pills.spacing = 6
         pills.alignment = .centerY
@@ -2413,7 +2419,14 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(reset)
         reset.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
 
-        stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · 30 fps · 无缝循环 · 溶解关闭"))
+        // 底部状态：反映实际生成管线。PerfectLoop 已安装可用时显示「PerfectLoop 无缝循环」，
+        // 否则回退到原本的「无缝循环」；淡化与帧率也跟随当前设置。
+        let fpsText = Tuning.outputFPS > 0 ? "\(Tuning.outputFPS) fps" : "30 fps"
+        let loopText = (Tuning.usePerfectLoop && Transcoder.perfectLoopAvailable())
+            ? "PerfectLoop 无缝循环" : "无缝循环"
+        let fadeText = Tuning.fadeSeconds > 0
+            ? String(format: "溶解 %.1f s", Tuning.fadeSeconds) : "溶解关闭"
+        stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · \(fpsText) · \(loopText) · \(fadeText)"))
 
         vc.view = root
         root.layoutSubtreeIfNeeded()
@@ -2658,19 +2671,19 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         icon.contentTintColor = NSColor.secondaryLabelColor.withAlphaComponent(0.55)
         icon.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = NSTextField(labelWithString: "把视频拖到这里")
+        let title = NSTextField(labelWithString: "把视频或图片拖到这里")
         title.font = roundedFont(19, .semibold)
         title.alignment = .center
         title.translatesAutoresizingMaskIntoConstraints = false
 
-        let sub = NSTextField(labelWithString: "会自动去跳帧、按屏幕比例裁切、做成无缝循环，\n然后收进壁纸库，点一下就能换上")
+        let sub = NSTextField(labelWithString: "视频会自动去跳帧、做成无缝循环；图片直接当静态壁纸，\n都会收进壁纸库，点一下就能换上")
         sub.font = .systemFont(ofSize: 11.5)
         sub.textColor = .tertiaryLabelColor
         sub.alignment = .center
         sub.maximumNumberOfLines = 2
         sub.translatesAutoresizingMaskIntoConstraints = false
 
-        let pick = NSButton(title: "或者选一个文件…", target: self, action: #selector(pickFiles))
+        let pick = NSButton(title: "或者从电脑里选…", target: self, action: #selector(pickFiles))
         pick.bezelStyle = .rounded
         pick.controlSize = .small
         pick.font = .systemFont(ofSize: 11.5)
@@ -2922,8 +2935,13 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
-        panel.message = "选择要当壁纸的视频（可多选）"
+        // .image 是抽象类型，多数系统版本会展开成所有图片格式；再把常见具体格式
+        // 列一遍，保证 HEIC / WebP / GIF 也能选到。
+        panel.allowedContentTypes = [
+            .movie, .mpeg4Movie, .quickTimeMovie, .image,
+            .jpeg, .png, .heic, .webP, .tiff, .bmp, .gif,
+        ]
+        panel.message = "选视频或图片（可多选）；图片会做成静态壁纸"
         if panel.runModal() == .OK {
             delegate?.libraryAdd(urls: panel.urls)
         }

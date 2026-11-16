@@ -1554,7 +1554,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             do {
-                let out = try tc.importVideo(source: src, into: Source.libraryDir)
+                // 图片走独立分支：做成画面完全静止的壁纸，不套视频那套去跳帧 / 去片尾 / 掐黑场
+                let out: URL
+                if Transcoder.imageExts.contains(src.pathExtension.lowercased()) {
+                    out = try tc.importStillImage(source: src, into: Source.libraryDir)
+                } else {
+                    out = try tc.importVideo(source: src, into: Source.libraryDir)
+                }
                 DispatchQueue.main.async {
                     self.isImporting = false
                     // 链接下载来的临时目录，入库后就删掉，别占地方
