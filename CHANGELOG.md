@@ -354,7 +354,7 @@
 - [x] 签名：**按用户决定走 ad-hoc + 开源 + AI 提示词安装路线，不做 Developer ID 公证**（`sign-notarize.sh --check` 本机无 Developer ID 与公证凭据）。
 - [x] 版本信息 3.38 → 3.39 已同步十语言 README（文字 + badge 两处）+ 确认 i18n 文档无版本号残留。
 - [ ] **【需用户手动·服务器】** 更新更新接口 `/api/update/check?version=…&channel=stable` 的元数据与 SHA256（交付参数见下方 Released 条目）。
-- [ ] **【需用户手动·GitHub】** 把 DMG 上传到 GitHub Release `v3.39`（ad-hoc 包，配 AI 提示词安装说明）。
+- [x] **【已完成·GitHub】** DMG 已上传到 GitHub Release `v3.39`（2026-11-17 19:40）：资产 `Dong-3.39.dmg`，size `61527463`，线上 digest `sha256:7fb0b5b3906cc9a8735ea8dd22a3c1d182635a3a5356448501720b707ee80e2b` 与本地一致，Release 为 Latest，说明含 ad-hoc 签名与 AI 提示词安装指引。`https://github.com/zhang-1-kael/dong/releases/tag/v3.39`
 - [x] 把 `Unreleased` 归档为 v3.39 发布条目（见下方 Released 段）；历史条目按约定保留不删。
 
 ## 本机环境备注（不属于发布内容）
