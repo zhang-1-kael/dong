@@ -10,6 +10,8 @@ protocol WallpaperLibraryDelegate: AnyObject {
     func libraryCurrentIndex() -> Int
     func libraryApply(index: Int)
     func libraryDelete(index: Int)
+    /// 壁纸库内长按拖动重排：from/to 都是「移除源之后的插入位置」
+    func libraryMove(from: Int, to: Int)
     func libraryAdd(urls: [URL])
     func libraryAddLink()
     /// 直接拿一条已经确认过的链接去下载
@@ -279,6 +281,10 @@ final class WallpaperCard: NSView {
     var onHoverStart: (() -> Void)?
     /// 右下角微调按钮：点了就只调这一张
     var onTune: (() -> Void)?
+    /// 长按拖动重排：事件坐标都给外面，卡片只负责「什么时候开始 / 跟手移动 / 结束」
+    var onDragBegin: (() -> Void)?
+    var onDragMove: ((NSPoint) -> Void)?
+    var onDragEnd: (() -> Void)?
 
     private let thumbWrap = NSView()
     private let media = MediaView()
@@ -294,6 +300,13 @@ final class WallpaperCard: NSView {
     private var looper: AVPlayerLooper?
     private var tracking: NSTrackingArea?
     private var hovered = false
+
+    // 长按拖动：按住 0.42s 才算重排，短按仍然是「设为壁纸」
+    private var pressTimer: Timer?
+    private var pressOrigin: NSPoint = .zero      // 鼠标按下时的窗口坐标
+    private var dragOrigin: NSPoint = .zero       // 拖动开始时卡片的 frame.origin
+    private var dragging = false
+    private var movedBeforeHold = false           // 长按没到就挪了鼠标：这次当普通拖动，不触发任何动作
 
     init(url: URL, aspect: CGFloat, name: String, meta: String) {
         self.url = url
@@ -372,7 +385,10 @@ final class WallpaperCard: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    deinit { stopPlayback() }
+    deinit {
+        pressTimer?.invalidate()
+        stopPlayback()
+    }
 
     func setImage(_ image: NSImage?) {
         media.setImage(image)
@@ -461,7 +477,8 @@ final class WallpaperCard: NSView {
     }
 
     private func endHover() {
-        guard hovered else { return }
+        // 拖动中途鼠标必然离开卡片，这时候别收悬停态：否则卡片会一边跟着手走一边变暗
+        guard hovered, !dragging else { return }
         hovered = false
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.14
@@ -516,8 +533,10 @@ final class WallpaperCard: NSView {
         media.playerLayer.isHidden = true
     }
 
-    /// 卡片被移除前调用，别留着解码器
+    /// 卡片被移除前调用，别留着解码器和长按计时器
     func teardown() {
+        pressTimer?.invalidate()
+        pressTimer = nil
         endHover()
         stopPlayback()
     }
@@ -532,7 +551,91 @@ final class WallpaperCard: NSView {
     // MARK: 交互
 
     override func mouseDown(with event: NSEvent) {
-        onApply?()
+        pressOrigin = event.locationInWindow
+        movedBeforeHold = false
+        dragging = false
+        pressTimer?.invalidate()
+        // common mode：滚动 / 菜单跟踪时也能按时触发
+        pressTimer = Timer(timeInterval: 0.32, target: self,
+                           selector: #selector(beginReorderDrag), userInfo: nil, repeats: false)
+        RunLoop.current.add(pressTimer!, forMode: .common)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        let p = event.locationInWindow
+        if !dragging {
+            // 手抖 / 按住的同时就开始挪，不该取消长按：真人几乎都是边按边动的。
+            // 这里只标记「这次不算点击」，计时器继续走，到点照样进入拖动。
+            // 只有松手时还没到长按时间，才什么都不做。
+            if hypot(p.x - pressOrigin.x, p.y - pressOrigin.y) > 7 {
+                movedBeforeHold = true
+            }
+            return
+        }
+        // gallery 是 flipped 坐标：鼠标往上（window y 增大）时卡片 y 要减小
+        var f = frame
+        f.origin = NSPoint(x: dragOrigin.x + (p.x - pressOrigin.x),
+                           y: dragOrigin.y - (p.y - pressOrigin.y))
+        frame = f
+        onDragMove?(p)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        pressTimer?.invalidate()
+        pressTimer = nil
+        if dragging {
+            dragging = false
+            alphaValue = 1
+            // 落下：图层缩放弹回 1（frame 的落位由 GalleryView 的弹簧接管）
+            let drop = CASpringAnimation(keyPath: "transform")
+            drop.mass = 1; drop.stiffness = 320; drop.damping = 24
+            drop.fromValue = NSValue(caTransform3D: layer?.presentation()?.transform
+                                     ?? layer?.transform ?? CATransform3DIdentity)
+            drop.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+            drop.duration = drop.settlingDuration
+            layer?.removeAnimation(forKey: "vw_lift")
+            layer?.transform = CATransform3DIdentity
+            layer?.add(drop, forKey: "vw_drop")
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer?.zPosition = 0
+            layer?.shadowOpacity = 0.13
+            thumbWrap.layer?.borderWidth = hovered ? 1 : 0
+            thumbWrap.layer?.borderColor = hovered
+                ? NSColor.white.withAlphaComponent(0.35).cgColor : nil
+            CATransaction.commit()
+            onDragEnd?()
+        } else if !movedBeforeHold {
+            onApply?()   // 短按还是老行为：设为壁纸（放到 mouseUp 才触发，更符合点击习惯）
+        }
+    }
+
+    @objc private func beginReorderDrag() {
+        guard !dragging else { return }
+        pressTimer?.invalidate()
+        pressTimer = nil
+        dragging = true
+        dragOrigin = frame.origin
+        // 提到最前面，别被后面的卡片压住。
+        // 用图层 zPosition 而不是重新 addSubview —— 后者会先把视图摘下来再挂回去，
+        // 可能打断「按住期间」的事件响应，导致后续 mouseDragged 收不到。
+        layer?.zPosition = 20
+        alphaValue = 0.94
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.shadowOpacity = 0.34
+        thumbWrap.layer?.borderWidth = 2
+        thumbWrap.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        CATransaction.commit()
+        // 抬起手感：轻微放大。用图层 transform（不动 frame，免得跟手移动 + 弹簧抢同一个 frame）。
+        // 系统弹簧阻尼 ≈0.72，跟 iOS 拿起图标的手感一致。
+        let lift = CASpringAnimation(keyPath: "transform")
+        lift.mass = 1; lift.stiffness = 300; lift.damping = 22
+        lift.fromValue = NSValue(caTransform3D: layer?.transform ?? CATransform3DIdentity)
+        lift.toValue = NSValue(caTransform3D: CATransform3DMakeScale(1.035, 1.035, 1))
+        lift.duration = lift.settlingDuration
+        layer?.add(lift, forKey: "vw_lift")
+        onDragBegin?()
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -560,6 +663,39 @@ final class WallpaperCard: NSView {
 
 // MARK: - 瀑布流容器
 
+/// 二维阻尼弹簧（参数对齐 Apple CASpringAnimation 默认：mass=1 / stiffness=200 / damping=20，
+/// 阻尼比 ≈0.71，落位有一点点回弹但不晃）。直接积分到 view.frame，避开 layer.position
+/// 在 flipped 容器里的坐标换算问题。
+private struct VWSpring {
+    var x: CGFloat, y: CGFloat
+    var vx: CGFloat = 0, vy: CGFloat = 0
+    var tx: CGFloat, ty: CGFloat
+
+    init(frame: NSRect) {
+        x = frame.minX; y = frame.minY
+        tx = x; ty = y
+    }
+
+    mutating func retarget(_ f: NSRect) { tx = f.minX; ty = f.minY }
+
+    /// 步进一帧（dt 秒），返回 false 表示已经收敛。
+    /// 用指数衰减逼近目标：x += (target-x) * (1-e^(-k·dt))。这是标准 ease-out 插值，
+    /// 单调收敛、绝不过冲，视觉上跟 Apple 的 spring(damping<1) 很接近但数值稳定。
+    mutating func step(_ dt: CGFloat) -> Bool {
+        let rate: CGFloat = 11.0   // 越大越快；11 ≈ 0.3s 内走完 95%
+        let a = 1 - exp(-rate * dt)
+        x += (tx - x) * a
+        y += (ty - y) * a
+        vx = (tx - x) * rate       // 仅用于收敛判定
+        vy = (ty - y) * rate
+        if abs(x - tx) < 0.35, abs(y - ty) < 0.35 {
+            x = tx; y = ty; vx = 0; vy = 0
+            return false
+        }
+        return true
+    }
+}
+
 final class GalleryView: NSView {
     var onApply: ((Int) -> Void)?
     var onDelete: ((Int) -> Void)?
@@ -573,7 +709,20 @@ final class GalleryView: NSView {
     /// 拖拽目标，落在卡片（卡片→gallery）或缝隙（gallery）都直接命中这里。
     var onDrop: (([URL]) -> Void)?
     var onDragStateChange: ((Bool) -> Void)?
+    /// 长按重排落位：(原序号, 移除源之后的插入位置)
+    var onMove: ((Int, Int) -> Void)?
     private var accepts = false
+
+    private var dragFrom = -1
+    private var dragTo = -1
+    private var draggedStart: NSRect = .zero
+    private var draggingCard: WallpaperCard?
+    private let dropHighlight = NSView()
+
+    /// 重排时的弹簧：目标 frame → 当前弹簧状态。key 用卡片的 URL，重建后不串。
+    private var springs: [String: VWSpring] = [:]
+    private var springTimer: Timer?
+    private var lastSpringTick: TimeInterval = 0
 
     private var dropRegistered = false
     private func ensureDropRegistered() {
@@ -585,6 +734,13 @@ final class GalleryView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         ensureDropRegistered()
+        // 落点高亮框：画在目标卡片外一圈，让用户看清松手会排到哪
+        dropHighlight.wantsLayer = true
+        dropHighlight.isHidden = true
+        dropHighlight.layer?.cornerRadius = Look.radius + 3
+        dropHighlight.layer?.borderWidth = 2.5
+        dropHighlight.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        addSubview(dropHighlight)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -647,11 +803,18 @@ final class GalleryView: NSView {
     // MARK: 数据
 
     func setItems(_ newURLs: [URL], current: Int) {
-        let changed = newURLs.map { $0.path } != urls.map { $0.path }
+        let oldPaths = urls.map { $0.path }
+        let newPaths = newURLs.map { $0.path }
+        let sameSet = Set(oldPaths) == Set(newPaths)
+        // 只是顺序变了（拖动重排）：复用同一批卡片对象，弹簧滑到新位置，不销毁重建。
+        // 只有增删文件才走重建分支 —— 重建会打断弹簧，也丢掉正在播的视频。
+        let reorderOnly = sameSet && oldPaths != newPaths && cards.count == newURLs.count
+        let changed = !sameSet || cards.count != newURLs.count
         urls = newURLs
         self.current = current
 
         if changed {
+            stopSprings()
             for c in cards {
                 c.teardown()
                 c.removeFromSuperview()
@@ -665,13 +828,23 @@ final class GalleryView: NSView {
                     c.setImage(image)
                 }
             }
+        } else if reorderOnly {
+            var byPath: [String: WallpaperCard] = [:]
+            for c in cards { byPath[c.url.path] = c }
+            cards = newPaths.compactMap { byPath[$0] }
         }
 
         for (i, c) in cards.enumerated() { c.setCurrent(i == current) }
 
         let width = enclosingScrollView?.contentView.bounds.width ?? bounds.width
         if width > 0 { lastWidth = width }
-        relayout()
+        if reorderOnly {
+            // 落位弹簧：所有卡片（含刚被拖的那张）从当前位置滑到新顺序的格子
+            let (frames, total) = layoutFrames(for: cards)
+            springTo(frames, total: total)
+        } else {
+            relayout()
+        }
     }
 
     private func makeCard(for url: URL) -> WallpaperCard {
@@ -697,6 +870,17 @@ final class GalleryView: NSView {
         card.onReveal = { [weak self, weak card] in
             guard let self, let card, let i = self.cards.firstIndex(where: { $0 === card }) else { return }
             self.onReveal?(i)
+        }
+        card.onDragBegin = { [weak self, weak card] in
+            guard let self, let card else { return }
+            self.beginReorder(card)
+        }
+        card.onDragMove = { [weak self, weak card] p in
+            guard let self, let card else { return }
+            self.updateReorder(dragging: card, windowPoint: p)
+        }
+        card.onDragEnd = { [weak self] in
+            self?.finishReorder()
         }
         // 同一时刻只允许一张卡在悬停：鼠标移到别处时，把之前那张强行收回
         card.onHoverStart = { [weak self, weak card] in
@@ -724,20 +908,18 @@ final class GalleryView: NSView {
         }
     }
 
-    private func relayout() {
-        guard !relaying else { return }
-        relaying = true
-        defer { relaying = false }
-
+    /// 纯计算：给定一组卡片顺序，算出各自的 frame 和内容总高（不改任何视图状态）。
+    /// 正式排版 / 拖动避让预览 / 落位都复用它，保证「预览位置」和「落地位置」完全一致。
+    private func layoutFrames(for order: [WallpaperCard]) -> ([String: NSRect], CGFloat) {
+        var frames: [String: NSRect] = [:]
         let width = max(lastWidth, 360)
         let usable = width - Look.inset * 2
-        guard usable > 0 else { return }
+        guard usable > 0 else { return (frames, 0) }
 
-        // 先按「理想栏宽」定列数，而不是能塞几列就塞几列
         let target: CGFloat = 238
         var cols = max(1, Int(((usable + Look.gap) / (target + Look.gap)).rounded()))
         cols = min(cols, Look.maxCols)
-        if !cards.isEmpty { cols = min(cols, cards.count) }
+        if !order.isEmpty { cols = min(cols, order.count) }
 
         var colW = (usable - CGFloat(cols - 1) * Look.gap) / CGFloat(cols)
         if colW > Look.maxColW {
@@ -746,35 +928,108 @@ final class GalleryView: NSView {
         }
 
         var heights = [CGFloat](repeating: Look.topInset, count: max(cols, 1))
-
-        for (i, card) in cards.enumerated() {
+        for (i, card) in order.enumerated() {
             let h = colW * heightRatio(for: card, index: i)
-
-            // 挑当前最矮的一列（瀑布流的关键：短边优先）
             var target2 = 0
             for k in 1..<heights.count where heights[k] < heights[target2] - 0.5 { target2 = k }
-
             let x = Look.inset + CGFloat(target2) * (colW + Look.gap)
             let y = heights[target2]
-            card.frame = NSRect(x: x, y: y, width: colW, height: h)
-            card.needsLayout = true
+            frames[card.url.path] = NSRect(x: x, y: y, width: colW, height: h)
             heights[target2] = y + h + Look.gap
         }
-
         var total = (heights.max() ?? Look.topInset) + Look.bottomInset
-        if cards.isEmpty { total = 0 }
+        if order.isEmpty { total = 0 }
+        return (frames, total)
+    }
+
+    /// 立即排版（初始化 / 窗口缩放用，不要动画）
+    private func relayout() {
+        guard !relaying else { return }
+        relaying = true
+        defer { relaying = false }
+
+        stopSprings()
+        let (frames, total) = layoutFrames(for: cards)
+        for c in cards {
+            guard let f = frames[c.url.path] else { continue }
+            c.frame = f
+            c.needsLayout = true
+        }
+        let width = max(lastWidth, 360)
         let visible = enclosingScrollView?.contentView.bounds.height ?? total
         setFrameSize(NSSize(width: width, height: max(total, visible)))
 
         if ProcessInfo.processInfo.environment["VW_GALLERY_DEBUG"] != nil {
             var lines: [String] = []
-            lines.append("[gallery] width=\(Int(width)) cols=\(cols) colW=\(Int(colW)) total=\(Int(total)) cards=\(cards.count)")
+            lines.append("[gallery] width=\(Int(width)) total=\(Int(total)) cards=\(cards.count)")
             for (i, c) in cards.enumerated() {
                 lines.append("  #\(i) x=\(Int(c.frame.minX)) y=\(Int(c.frame.minY)) w=\(Int(c.frame.width)) h=\(Int(c.frame.height)) aspect=\(String(format: "%.2f", c.aspect))")
             }
             try? lines.joined(separator: "\n").write(
                 toFile: "/tmp/vw-gallery.txt", atomically: true, encoding: .utf8)
         }
+    }
+
+    // MARK: 弹簧动画（Apple HIG 式阻尼插值）
+
+    /// 把每张卡朝目标 frame 弹过去；draggedPath 对应的卡片跳过（它跟手，不参与避让动画）
+    private func springTo(_ frames: [String: NSRect], total: CGFloat,
+                          skip draggedPath: String? = nil, resize: Bool = true) {
+        for c in cards {
+            let path = c.url.path
+            guard path != draggedPath, let f = frames[path] else { continue }
+            if var s = springs[path] {
+                s.retarget(f)
+                springs[path] = s
+            } else {
+                var s = VWSpring(frame: c.frame)
+                s.retarget(f)
+                springs[path] = s
+            }
+        }
+        // 拖动中不要跟着 preview 顺序反复改 contentSize：不同排布总高不同，
+        // 每来一次 mouseDragged 就 setFrameSize 会让滚动区上下抖。松手后再统一设。
+        if resize {
+            let visible = enclosingScrollView?.contentView.bounds.height ?? total
+            setFrameSize(NSSize(width: max(lastWidth, 360), height: max(total, visible)))
+        }
+        startSpringTimer()
+    }
+
+    private func startSpringTimer() {
+        guard springTimer == nil else { return }
+        lastSpringTick = ProcessInfo.processInfo.systemUptime
+        let t = Timer(timeInterval: 1.0 / 60.0, target: self,
+                      selector: #selector(springTick), userInfo: nil, repeats: true)
+        RunLoop.current.add(t, forMode: .common)
+        springTimer = t
+    }
+
+    @objc private func springTick() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let dt = CGFloat(min(0.05, max(0.001, now - lastSpringTick)))
+        lastSpringTick = now
+        var moving = false
+        for c in cards {
+            let path = c.url.path
+            guard var s = springs[path] else { continue }
+            if s.step(dt) {
+                moving = true
+                springs[path] = s          // 值类型：必须把这一帧的结果写回，否则每帧都从旧值重算
+            } else {
+                springs[path] = nil
+            }
+            var f = c.frame
+            f.origin = NSPoint(x: s.x, y: s.y)
+            c.frame = f
+        }
+        if !moving { stopSprings() }
+    }
+
+    private func stopSprings() {
+        springTimer?.invalidate()
+        springTimer = nil
+        springs.removeAll()
     }
 
     /// 卡片高度（相对于栏宽的倍数）。
@@ -802,6 +1057,120 @@ final class GalleryView: NSView {
         var h = 7
         for u in s.unicodeScalars { h = (h &* 31 &+ Int(u.value)) & 0x0fff_ffff }
         return h
+    }
+
+    // MARK: 长按拖动重排
+
+    private func beginReorder(_ card: WallpaperCard) {
+        // 连续拖动时，这张卡可能还带着上一次的落位弹簧在跑。拖动期间 frame 由
+        // mouseDragged 直接跟手写，弹簧若再按旧目标拉一帧，就会「跟手同时被拽回」，
+        // 表现为明显抽搐。这里先把它清掉。
+        springs[card.url.path] = nil
+        dragFrom = cards.firstIndex(where: { $0 === card }) ?? -1
+        dragTo = dragFrom
+        draggingCard = card
+        clearHoverState()   // 其它卡片收起，避免拖动时一片视频在播
+        // 记下被拖卡当前位置，松手时弹簧从「手松开的地方」弹进目标格子
+        draggedStart = card.frame
+        // 落点判定用的稳定网格（原顺序的格子），不受弹簧插值影响
+        settleFrames = layoutFrames(for: cards).0
+        lastNearest = dragFrom
+    }
+
+    private var lastNearest = -1   // 滞后用：上一次判定的最近卡片下标
+
+    /// 原顺序下的目标格子。拖动判距必须用它，不能用 c.frame：
+    /// c.frame 正被弹簧逐帧改写，拿它算「离谁最近」会形成反馈震荡（拖到边界来回抽搐）。
+    private var settleFrames: [String: NSRect] = [:]
+
+    /// 找离手最近的一张卡当落点，并判断插在它前面还是后面。
+    private func updateReorder(dragging card: WallpaperCard, windowPoint: NSPoint) {
+        guard dragFrom >= 0 else { return }
+        let p = convert(windowPoint, from: nil)   // flipped 坐标：y 往下增大
+        var best = -1
+        var bestDist: CGFloat = .greatestFiniteMagnitude
+        for (i, c) in cards.enumerated() where c !== card {
+            // 用静态网格格位判距，不用 c.frame（它正被弹簧改写，会形成反馈震荡）
+            let cf = settleFrames[c.url.path] ?? c.frame
+            let dx = max(cf.minX - p.x, 0, p.x - cf.maxX)
+            let dy = max(cf.minY - p.y, 0, p.y - cf.maxY)
+            let d = hypot(dx, dy)
+            if d < bestDist { bestDist = d; best = i }
+        }
+        guard best >= 0 else {
+            dragTo = dragFrom
+            lastNearest = -1
+            dropHighlight.isHidden = true
+            return
+        }
+        // 滞后（hysteresis）：鼠标停在两张卡的交界处时，最近目标会来回翻转，
+        // 预览布局跟着重排就是肉眼可见的「抽搐」。新候选必须明显更近（<0.75×）
+        // 才切换，否则维持上一次的判定。
+        var chosen = best
+        if lastNearest >= 0, lastNearest < cards.count, lastNearest != best,
+           let lf = settleFrames[cards[lastNearest].url.path] {
+            let ldx = max(lf.minX - p.x, 0, p.x - lf.maxX)
+            let ldy = max(lf.minY - p.y, 0, p.y - lf.maxY)
+            if bestDist > hypot(ldx, ldy) * 0.75 { chosen = lastNearest }
+        }
+        lastNearest = chosen
+        let target = cards[chosen]
+        let tf = settleFrames[target.url.path] ?? target.frame
+        // 跨行看上下，同一行看左右
+        let after = (p.y < tf.minY || p.y > tf.maxY)
+            ? p.y > tf.maxY
+            : p.x > tf.midX
+        // 换算成「源卡片移除之后」的插入位置：源在目标前面时，目标下标会左移一位
+        // 必须用 chosen（滞后后的稳定目标），否则 target 和插入位不对应，仍会来回跳
+        let to = dragFrom < chosen ? (after ? chosen : chosen - 1)
+                                   : (after ? chosen + 1 : chosen)
+        dragTo = max(0, min(to, cards.count - 1))
+
+        // 避让排布：按「假如现在松手」的顺序先算一遍目标格子，让被挤到的卡片
+        // 弹簧滑开留出空位；被拖的那张跳过（它正跟手）。高亮框落在空位上。
+        var preview = cards
+        if let dragged = draggingCard, let fi = preview.firstIndex(where: { $0 === dragged }) {
+            preview.remove(at: fi)
+            preview.insert(dragged, at: dragTo)
+        }
+        let (frames, total) = layoutFrames(for: preview)
+        springTo(frames, total: total, skip: draggingCard?.url.path, resize: false)
+
+        if dragTo == dragFrom {
+            dropHighlight.isHidden = true
+        } else if let slot = frames[draggingCard?.url.path ?? ""] {
+            // 只在「从隐藏变显示」时提到最前。原先每次 mouseDragged 都
+            // removeFromSuperview + addSubview，鼠标一动就重建 layer，会闪。
+            if dropHighlight.isHidden {
+                dropHighlight.removeFromSuperview()
+                addSubview(dropHighlight)
+            }
+            dropHighlight.frame = slot.insetBy(dx: -3, dy: -3)
+            dropHighlight.isHidden = false
+        }
+    }
+
+    private func finishReorder() {
+        dropHighlight.isHidden = true
+        let from = dragFrom, to = dragTo
+        dragFrom = -1
+        dragTo = -1
+
+        // 被拖的卡片此刻还停在手松开的位置。先把它的弹簧目标设为「插入后」
+        // 的格子，让它弹进去；数据由 onMove 异步提交，卡片对象复用所以动画不断。
+        if from >= 0, to >= 0, from != to, let dragged = draggingCard {
+            var preview = cards
+            let moved = preview.remove(at: from)
+            preview.insert(moved, at: to)
+            let (frames, total) = layoutFrames(for: preview)
+            springTo(frames, total: total)   // 含被拖卡：从松手处弹入新格子
+            onMove?(from, to)                // 委托侧重排 + 持久化，不重建卡片
+        } else {
+            // 没换位：所有卡片（含被拖的那张）弹回原位
+            let (frames, total) = layoutFrames(for: cards)
+            springTo(frames, total: total)
+        }
+        draggingCard = nil
     }
 }
 
@@ -1739,7 +2108,14 @@ final class DropOverlay: NSView {
         sub.alignment = .center
         sub.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = NSStackView(views: [icon, text, sub])
+        // 导入时顺带推荐自选插件，并把实测占用写清楚（用户有权先知道代价）。
+        let rec = NSTextField(labelWithString: Transcoder.perfectLoopRecommendation)
+        rec.font = .systemFont(ofSize: 10)
+        rec.textColor = NSColor.white.withAlphaComponent(0.5)
+        rec.alignment = .center
+        rec.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [icon, text, sub, rec])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 8
@@ -2128,6 +2504,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             self.showTuning(from: anchor)
         }
         gallery.onDelete = { [weak self] i in self?.delegate?.libraryDelete(index: i) }
+        gallery.onMove = { [weak self] from, to in self?.delegate?.libraryMove(from: from, to: to) }
         gallery.onReveal = { [weak self] i in
             guard let self, let urls = self.delegate?.libraryVideos(), i < urls.count else { return }
             NSWorkspace.shared.activateFileViewerSelecting([urls[i]])
@@ -2419,14 +2796,17 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(reset)
         reset.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
 
-        // 底部状态：反映实际生成管线。PerfectLoop 已安装可用时显示「PerfectLoop 无缝循环」，
-        // 否则回退到原本的「无缝循环」；淡化与帧率也跟随当前设置。
+        // 底部状态：反映实际生成管线。PerfectLoop 是用户自选插件，没装就回退普通循环，
+        // 并在此给出带实测占用的推荐；装了才显示「PerfectLoop 无缝循环」。
         let fpsText = Tuning.outputFPS > 0 ? "\(Tuning.outputFPS) fps" : "30 fps"
-        let loopText = (Tuning.usePerfectLoop && Transcoder.perfectLoopAvailable())
-            ? "PerfectLoop 无缝循环" : "无缝循环"
+        let pluginOn = Tuning.usePerfectLoop && Transcoder.perfectLoopAvailable()
+        let loopText = pluginOn ? "PerfectLoop 无缝循环" : "无缝循环"
         let fadeText = Tuning.fadeSeconds > 0
             ? String(format: "溶解 %.1f s", Tuning.fadeSeconds) : "溶解关闭"
         stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · \(fpsText) · \(loopText) · \(fadeText)"))
+        if !pluginOn {
+            stack.addArrangedSubview(caption(Transcoder.perfectLoopRecommendation, tint: .controlAccentColor))
+        }
 
         vc.view = root
         root.layoutSubtreeIfNeeded()
@@ -2941,7 +3321,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             .movie, .mpeg4Movie, .quickTimeMovie, .image,
             .jpeg, .png, .heic, .webP, .tiff, .bmp, .gif,
         ]
-        panel.message = "选视频或图片（可多选）；图片会做成静态壁纸"
+        panel.message = "选视频或图片（可多选）；图片会做成静态壁纸\n\(Transcoder.perfectLoopRecommendation)"
         if panel.runModal() == .OK {
             delegate?.libraryAdd(urls: panel.urls)
         }

@@ -22,6 +22,9 @@ enum Tuning {
         static let maxDuration = "maxDuration"
         /// 是否用 PerfectLoop（SSIM 形变）代替内置 blend 交叉淡化做无缝循环
         static let usePerfectLoop = "usePerfectLoop"
+        /// 首尾淡化关闭（fade=0）时，是否仍自动用 PerfectLoop 消除循环跳变。
+        /// 抖音等短视频首尾本来就接不上，硬切会每圈跳一下；开这个就不用手动去调淡化。
+        static let autoSeamless = "autoSeamless"
     }
 
     static let changed = Notification.Name("VWTuningChanged")
@@ -83,7 +86,7 @@ enum Tuning {
 
     // MARK: 重新生成后生效 · 导入层
 
-    /// 输出帧率：0 = 跟随源（上限 30），否则 24 / 30 / 60
+    /// 输出帧率：0 = 跟随源（上限 60，充分利用高帧率片源），否则 24 / 30 / 60
     static var outputFPS: Int {
         get { Int(read(Key.outputFPS, 0)) }
         set { write(Key.outputFPS, Double(newValue)) }
@@ -119,10 +122,27 @@ enum Tuning {
         }
     }
 
-    /// 转码用的实际帧率。默认沿袭老策略（跟随源、上限 30），选了档位才覆盖
+    /// 首尾淡化关闭（fade=0）时，是否仍自动用 PerfectLoop 消除循环跳变。默认开。
+    /// 抖音等短视频首尾画面本来就不相连，硬切会每圈跳一下；开这个就不用手动去调「首尾淡化」。
+    /// 只有 PerfectLoop 运行时齐全时才生效，缺依赖时依旧回退到纯转码硬切，不会报错。
+    static var autoSeamless: Bool {
+        get {
+            let ud = UserDefaults.standard
+            guard ud.object(forKey: prefix + Key.autoSeamless) != nil else { return true }
+            return ud.bool(forKey: prefix + Key.autoSeamless)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: prefix + Key.autoSeamless)
+            NotificationCenter.default.post(name: changed, object: nil,
+                                            userInfo: ["key": Key.autoSeamless])
+        }
+    }
+
+    /// 转码用的实际帧率。默认跟随源帧率、上限 60（不再一刀切砍到 30），选了档位才覆盖。
+    /// B 站/抖音的高画质档常有 60fps，砍到 30 会明显损失流畅度，这里跟随源保留。
     static func effectiveFPS(source: Double) -> Int {
         let chosen = outputFPS
-        return chosen > 0 ? chosen : max(1, min(30, Int(source.rounded())))
+        return chosen > 0 ? chosen : max(1, min(60, Int(source.rounded())))
     }
 
     /// 一键还原：删掉所有键，通知里带 reset 让播放层整体重建一次

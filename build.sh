@@ -60,20 +60,13 @@ else
   echo "!! 没有 vendor/yt-dlp_macos：链接下载功能会退回使用系统里的 yt-dlp"
 fi
 
-# PerfectLoop 无缝循环：把运行器 + 核心源码打进 bundle。
-# 转码时若本机有带 numpy/opencv/scikit-image 的 python3，就用它代替内置 blend 交叉淡化；
-# 没有则自动回退。PerfectLoop 为 MIT 许可，源码与 LICENSE 一并打包。
-if [ -f tools/perfectloop_runner.py ]; then
-  echo "==> 内置 PerfectLoop 运行器 + 核心源码"
-  mkdir -p "$APP/Contents/Resources/tools/PerfectLoop/src"
-  cp tools/perfectloop_runner.py "$APP/Contents/Resources/tools/"
-  cp tools/PerfectLoop/*.py "$APP/Contents/Resources/tools/PerfectLoop/" 2>/dev/null
-  cp tools/PerfectLoop/src/*.py "$APP/Contents/Resources/tools/PerfectLoop/src/" 2>/dev/null
-  cp tools/PerfectLoop/LICENSE "$APP/Contents/Resources/tools/PerfectLoop/" 2>/dev/null
-  xattr -c "$APP/Contents/Resources/tools"/* 2>/dev/null || true
-else
-  echo "!! 没有 tools/perfectloop_runner.py：PerfectLoop 无缝循环功能不可用（自动回退 blend）"
-fi
+# PerfectLoop 是【用户自选插件】，App 不再内置。
+# 原因：它的 Python 依赖环境约 332 MB（numpy/opencv/scipy/scikit-image），打进 DMG
+# 会让所有用户都背上这份体积，而多数人用不到。现改为：用户自行下载安装到
+#   ~/.local/share/VideoWallpaper/perfectloop-plugin/
+# Transcoder 检测到就启用，没装就自动回退内置 blend / 硬切，功能不受影响。
+# 导入入口与画面微调面板会给出推荐，并如实标注实测占用（磁盘 330 MB / 峰值内存 340 MB）。
+echo "==> PerfectLoop 为用户自选插件：不打包；UI 会给出推荐与占用说明"
 
 # App 图标：存在就装进 bundle（Info.plist 里 CFBundleIconFile = AppIcon）
 if [ -f AppIcon.icns ]; then

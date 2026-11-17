@@ -196,7 +196,7 @@ def _run_impl(input_path, output_path, width, height, fps, crf, start, duration,
     cmd += ["-filter_complex", filter_complex, "-map", "[v]",
             "-an", "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p",
             "-crf", str(crf), "-preset", "medium",
-            "-maxrate", "20M", "-bufsize", "40M",
+            "-maxrate", "80M", "-bufsize", "160M",
             "-r", str(fps), "-g", str(fps * 2),
             "-movflags", "+faststart", output_path]
 

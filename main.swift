@@ -230,7 +230,29 @@ enum Source {
 
     static let videoExts: Set<String> = ["mp4", "mov", "m4v"]
 
-    /// 优先读壁纸库（可放多个，按文件名排序轮播），库空时退回单个文件 / 内置素材
+    /// 长按拖拽重排后的顺序（文件名数组）。没拖过就没有这个键，仍按文件名排。
+    private static let orderKey = "VWTuning.libraryOrder"
+
+    /// 把当前列表顺序写进偏好；下次 load / 重启都能保持用户排的顺序。
+    static func saveOrder(_ urls: [URL]) {
+        UserDefaults.standard.set(urls.map { $0.lastPathComponent }, forKey: orderKey)
+    }
+
+    /// 按已存顺序排：认识的名字按存档走，新加进来的追加在后面（内部按文件名）。
+    private static func applySavedOrder(_ list: [URL]) -> [URL] {
+        guard let saved = UserDefaults.standard.array(forKey: orderKey) as? [String],
+              !saved.isEmpty else { return list }
+        let byName = Dictionary(uniqueKeysWithValues: list.map { ($0.lastPathComponent, $0) })
+        var out: [URL] = []
+        for name in saved {
+            if let url = byName[name] { out.append(url) }
+        }
+        let seen = Set(out.map { $0.lastPathComponent })
+        out.append(contentsOf: list.filter { !seen.contains($0.lastPathComponent) })
+        return out
+    }
+
+    /// 优先读壁纸库（可放多个，默认按文件名；拖过之后按用户排的顺序轮播），库空时退回单个文件 / 内置素材
     static func load() -> [URL] {
         // 调试：临时指定单个素材（不影响壁纸库）
         if let p = ProcessInfo.processInfo.environment["VW_VIDEO"] {
@@ -239,9 +261,9 @@ enum Source {
         var list: [URL] = []
         let fm = FileManager.default
         if let items = try? fm.contentsOfDirectory(at: libraryDir, includingPropertiesForKeys: nil) {
-            list = items
+            list = applySavedOrder(items
                 .filter { videoExts.contains($0.pathExtension.lowercased()) }
-                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+                .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending })
         }
         if list.isEmpty {
             if fm.fileExists(atPath: singleFile.path) {
@@ -1744,6 +1766,28 @@ extension AppDelegate: WallpaperLibraryDelegate {
         libraryWC?.reload()
         // 埋点只记删完还剩几张
         Analytics.shared.track("wallpaper_delete", ["lib_n": videos.count])
+    }
+
+    /// 壁纸库内拖动重排。to 是「源移除之后」的插入位置，跟 GalleryView 的算法一致。
+    func libraryMove(from: Int, to: Int) {
+        guard from != to,
+              from >= 0, from < videos.count,
+              to >= 0, to < videos.count else { return }
+        // 当前正在播的那张按 URL 找回新位置，别让「正在使用」跑到别人身上
+        let playing = videos.indices.contains(index) ? videos[index] : nil
+        let moved = videos.remove(at: from)
+        videos.insert(moved, at: to)
+        if let playing, let i = videos.firstIndex(where: { $0.path == playing.path }) {
+            index = i
+        }
+        Source.saveOrder(videos)
+        // 轮播队列要按新顺序重建；删壁纸时也是这两步，照抄保证行为一致
+        if isShowing {
+            rebuild()
+            pushLockScreen()
+        }
+        libraryWC?.reload()
+        Analytics.shared.track("wallpaper_reorder", ["from": from, "to": to, "lib_n": videos.count])
     }
 
     func libraryAdd(urls: [URL]) { importFiles(urls) }

@@ -32,8 +32,15 @@ final class DouyinWebFetcher: NSObject, WKScriptMessageHandler, WKNavigationDele
     /// 从详情接口里解析出的一条可下载素材
     private struct Media {
         let title: String
-        let urls: [String]      // 候选直链，按优先级排列（play_addr > bitrate > download_addr）
+        let urls: [String]      // 候选直链，按画质降序（高码率 > 默认档 > 带水印兜底）
         let isLivePhoto: Bool   // 是否来自实况图（image_post_info）
+    }
+
+    /// 带画质分数的候选直链。用于把 bit_rate 档位里的高画质档排到默认档前面。
+    private struct ScoredURL {
+        let url: String
+        let score: Double   // 画质分（像素数为主 + 码率/帧率微调），越大越优先
+        let order: Int      // 同分时的稳定顺序
     }
 
     private let handlerName = "__vwDetail"
@@ -484,16 +491,53 @@ final class DouyinWebFetcher: NSObject, WKScriptMessageHandler, WKNavigationDele
     }
 
     private static func collect(_ video: [String: Any], into urls: inout [String]) {
-        func add(_ addr: Any?) {
+        var cands: [ScoredURL] = []
+        var seq = 0
+
+        func num(_ v: Any?) -> Double {
+            if let n = v as? NSNumber { return n.doubleValue }
+            if let s = v as? String { return Double(s) ?? 0 }
+            return 0
+        }
+        func add(_ addr: Any?, score: Double) {
             guard let a = addr as? [String: Any], let list = a["url_list"] as? [String] else { return }
-            urls.append(contentsOf: list.filter { $0.hasPrefix("http") })
+            for u in list where u.hasPrefix("http") {
+                cands.append(ScoredURL(url: u, score: score, order: seq)); seq += 1
+            }
         }
-        add(video["play_addr"])
-        if let bitrates = video["bitrate_info"] as? [[String: Any]] {
-            for b in bitrates { add(b["play_addr"]) }
+
+        // 默认档 play_addr：它自己的 width/height 才是真实下载分辨率，
+        // video 顶层的 width/height 只是「源片标称值」（实测可能标称 3840×2160 但实际只给 1024×576），
+        // 绝不能用标称值给它打分，否则会把低清流误排到第一。
+        let defAddr = video["play_addr"] as? [String: Any]
+        let dw = num(defAddr?["width"]), dh = num(defAddr?["height"])
+        let defaultScore = (dw > 0 && dh > 0) ? dw * dh : -2
+
+        // 真正的多档位列表是 bit_rate（不是 bitrate_info！字段名写错过一次，导致漏掉 4K 档）。
+        // 每档的真实分辨率写在它自己的 play_addr.width/height 里，不是档位字典顶层。
+        // 评分：以像素数为主；同分辨率再叠加码率做微弱的二级区分；再轻推 h264 以利兼容。
+        if let bitrates = video["bit_rate"] as? [[String: Any]] {
+            for b in bitrates {
+                guard let pa = b["play_addr"] as? [String: Any] else { continue }
+                let w = num(pa["width"]), h = num(pa["height"])
+                let pixels = w * h
+                let bitrate = num(b["bit_rate"])          // bps，例如 7174200
+                let fps = num(b["FPS"])
+                // 主分 = 像素数；码率换算到「等效像素」量级做次级区分（7M bps ≈ +0.7M 分）
+                let score = pixels + bitrate / 10_000_000.0 * 1_000_000 + fps
+                add(pa, score: score)
+            }
         }
-        add(video["download_addr"])
-        add(video["play_addr_h264"])
+        // 默认档（play_addr / play_addr_h264）：按它自己的真实分辨率打分
+        add(video["play_addr"], score: defaultScore)
+        add(video["play_addr_h264"], score: defaultScore)
+        // download_addr 通常带水印，永远垫底兜底
+        add(video["download_addr"], score: -1)
+
+        // 按画质分降序；同分保持原始顺序（稳定）。去重在 parse() 里做。
+        let sorted = cands.sorted { $0.score == $1.score ? $0.order < $1.order : $0.score > $1.score }
+        urls.append(contentsOf: sorted.map { $0.url })
+        diag("collect 候选 \(sorted.count) 条，最高分 \(sorted.first?.score ?? 0)")
     }
 
     // MARK: - 下载直链

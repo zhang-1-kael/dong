@@ -196,15 +196,20 @@ final class Downloader {
         let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // 只要视频流（壁纸不需要声音）；优先 h264，AVFoundation 解起来最稳，
-        // 拿不到再退 HEVC / 任意编码，最后才退「音视频合一的单文件」。
+        // 只要视频流（壁纸不需要声音）。画质优先策略（2026-11-16）：
+        //  1. 有 4K / 2K（高度 ≥2000）就先拿最高分辨率 —— 屏幕物理分辨率 2408×1506，
+        //     1080p 铺满要放大 1.25×，GPU 双线性放大是「画质发软」的根源。
+        //  2. 没有 4K 才退回原来的 1080p 逻辑，仍优先 h264（AVFoundation 硬解最稳）。
+        // 注意顺序：分辨率优先于编码偏好。若写成 height<=2160 且 avc1 在前，
+        // yt-dlp 会挑到 1080p 的 avc1 而放过 4K 的 hevc —— 等于没放开。
         var args = [
             "--no-playlist",
             "--newline",
             "--no-warnings",
             "--no-mtime",
             "--no-part",
-            "-f", "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080][vcodec^=hev]/"
+            "-f", "bv*[height>=2000]/"
+                + "bv*[height<=1080][vcodec^=avc1]/bv*[height<=1080][vcodec^=hev]/"
                 + "bv*[height<=1080]/b[height<=1080]/b",
             "--merge-output-format", "mp4",
             "--remux-video", "mp4",

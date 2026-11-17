@@ -45,14 +45,28 @@ final class Transcoder {
 
     // MARK: PerfectLoop（SSIM 区域感知形变无缝循环）
 
+    /// PerfectLoop 为「用户自选插件」：App 不内置，检测到用户自行安装的版本才启用。
+    /// 以下占用数据为 2026-11-16 本机实测，写进 UI 推荐文案，让用户装之前就知道代价。
+    /// - 磁盘：依赖环境（numpy/opencv/scipy/scikit-image/PIL）约 332 MB；核心源码仅 44 KB。
+    /// - 内存：1280×720 转码峰值驻留集 353,304,576 B ≈ 337 MiB；分辨率越高越大。
+    static let perfectLoopDiskFootprint = "约 330 MB 磁盘"
+    static let perfectLoopMemoryFootprint = "约 340 MB 峰值内存"
+    /// 导入入口的一句话推荐（装没装都会显示，让用户知道有这个可选插件）
+    static let perfectLoopRecommendation =
+        "推荐安装 PerfectLoop 插件，循环更顺滑（\(perfectLoopDiskFootprint) / \(perfectLoopMemoryFootprint)）"
+
     /// PerfectLoop 运行时：找到一个「能跑通依赖」的 python3 + 运行器。
-    /// 懒加载并缓存；找不到（任何候选 python 都缺 numpy / opencv / scikit-image）则为 nil，转码回退 blend。
-    /// 顺序：先本 App 专用 venv（一键装依赖用），再系统常见 python3。
+    /// 懒加载并缓存；找不到（用户没装插件，或装的 python 缺 numpy / opencv / scikit-image）则为 nil，
+    /// 转码回退内置 blend / 普通硬切。
+    /// 运行器顺序：先用户自行安装的插件目录（推荐路径），再兼容老版本 bundle 内的副本。
     private static var _perfectLoopRuntime: (python: URL, runner: URL)?
     static var perfectLoopRuntime: (python: URL, runner: URL)? {
         if let cached = _perfectLoopRuntime { return cached }
         let fm = FileManager.default
+        let pluginDir = LockScreen.home.appendingPathComponent(".local/share/VideoWallpaper/perfectloop-plugin")
         let runnerCandidates: [URL?] = [
+            pluginDir.appendingPathComponent("perfectloop_runner.py"),
+            pluginDir.appendingPathComponent("tools/perfectloop_runner.py"),
             Bundle.main.url(forResource: "perfectloop_runner", withExtension: "py", subdirectory: "tools"),
             Bundle.main.url(forResource: "perfectloop_runner", withExtension: "py"),
             URL(fileURLWithPath: "tools/perfectloop_runner.py"),
@@ -562,10 +576,16 @@ final class Transcoder {
         }
         pipe += ",setsar=1"
 
-        // PerfectLoop：fade>0 且运行时（python + 依赖 + 运行器）齐全时，
-        // 用「SSIM 区域感知形变」代替下面的 ffmpeg blend 交叉淡化 —— 只对首尾不同的区域做加权形变，
-        // 相似区域直接淡入首帧，接缝比整段线性溶解自然得多。任一环节失败都回退到 blend。
-        if Tuning.usePerfectLoop, fade > 0,
+        // PerfectLoop：用「SSIM 区域感知形变」消除循环接缝 —— 只对首尾不同的区域做加权形变，
+        // 相似区域直接淡入首帧，比整段线性溶解自然得多。任一环节失败都回退到原来的流程。
+        //
+        // 触发条件（2026-11-16 放宽）：
+        //  - fade>0：本来就要做首尾过渡，用形变代替 blend（原有行为）。
+        //  - fade==0 且 autoSeamless（默认开）：抖音等短视频首尾画面不相连，硬切每圈跳一下，
+        //    也用形变补一段过渡，省得用户手动去开「首尾淡化」。
+        // 两条路径都要求运行时（python + 依赖 + 运行器）齐全，否则回退。
+        let wantSeamless = fade > 0 || Tuning.autoSeamless
+        if Tuning.usePerfectLoop, wantSeamless,
            let rt = Self.perfectLoopRuntime {
             do {
                 onStage?("优化中（\(size.w)×\(size.h)，\(cfr) fps，PerfectLoop 无缝循环）…")
@@ -575,8 +595,9 @@ final class Transcoder {
                                    python: rt.python, runner: rt.runner)
                 return
             } catch {
-                onStage?("PerfectLoop 不可用，回退到内置交叉淡化…")
-                // 继续往下走 ffmpeg blend 流程
+                onStage?(fade > 0 ? "PerfectLoop 不可用，回退到内置交叉淡化…"
+                                  : "PerfectLoop 不可用，保持普通循环…")
+                // 继续往下走 ffmpeg 流程（fade>0 走 blend，fade==0 走硬切）
             }
         }
 
@@ -602,10 +623,13 @@ final class Transcoder {
         }
 
         args += ["-an", "-c:v", "libx264", "-profile:v", "high", "-pix_fmt", "yuv420p",
-                 // 画质档位：CRF 18 + 20M 上限。壁纸是循环看的东西，接缝糊、暗部色带最显眼；
-                 // CRF 20 在慢速镜头上会糊出涂抹感，18 基本接近透明。体积约涨 20-35%。
+                 // 画质档位：CRF 18（恒定质量，接近透明）。
+                 // 2026-11-16：maxrate 从 20M 放宽到 80M。壁纸是本地循环播放的短片，
+                 // 体积不是瓶颈；但 4K 源缩到 2408×1354 / 60fps 后复杂度高，
+                 // 20M 的硬上限会把 CRF 18 想要的码率卡死，暗部和运动细节照样糊。
+                 // 放宽后 CRF 才能真正发挥作用；bufsize 按 maxrate×2 配。
                  "-crf", "18", "-preset", "medium",
-                 "-maxrate", "20M", "-bufsize", "40M",
+                 "-maxrate", "80M", "-bufsize", "160M",
                  "-r", "\(cfr)", "-g", "\(cfr * 2)",
                  "-movflags", "+faststart", output.path]
 
@@ -687,7 +711,10 @@ final class Transcoder {
     private func runPerfectLoop(input: URL, output: URL, start: Double, duration: Double,
                                size: (w: Int, h: Int), cfr: Int, watermark: Watermark?,
                                fade: Double, python: URL, runner: URL) throws {
-        let morphSteps = max(4, Int((fade * Double(cfr)).rounded()))
+        // fade>0 时形变帧数跟着淡化秒数走；fade==0（自动无缝）时给一段默认 0.35 秒的过渡，
+        // 太短（比如 4 帧）过渡会很生硬，反而像跳帧。
+        let morphSteps = fade > 0 ? max(4, Int((fade * Double(cfr)).rounded()))
+                                  : max(8, Int((0.35 * Double(cfr)).rounded()))
         var args: [String] = [
             runner.path, input.path, output.path,
             "--width", "\(size.w)", "--height", "\(size.h)",
