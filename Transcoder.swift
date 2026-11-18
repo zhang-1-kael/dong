@@ -55,6 +55,13 @@ final class Transcoder {
     static let perfectLoopRecommendation =
         "推荐安装 PerfectLoop 插件，循环更顺滑（\(perfectLoopDiskFootprint) / \(perfectLoopMemoryFootprint)）"
 
+    /// 插件下载/安装说明页。用项目已有的 GitHub 仓库（真实稳定），安装包与说明放这里。
+    /// 若日后改到官网下载页，只改这一处即可，三处 UI 文案会跟着变。
+    static let perfectLoopInstallURL = "https://github.com/zhang-1-kael/dong/releases"
+    /// 带下载指引的推荐文案：纯文本环境（拖拽浮层 / 系统文件面板）里直接把地址写出来
+    static let perfectLoopRecommendationWithLink =
+        perfectLoopRecommendation + "\n安装说明：github.com/zhang-1-kael/dong/releases"
+
     /// PerfectLoop 运行时：找到一个「能跑通依赖」的 python3 + 运行器。
     /// 懒加载并缓存；找不到（用户没装插件，或装的 python 缺 numpy / opencv / scikit-image）则为 nil，
     /// 转码回退内置 blend / 普通硬切。

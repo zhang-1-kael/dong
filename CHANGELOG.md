@@ -28,6 +28,37 @@
 > `hdiutil verify` 通过；内 App 版本 3.39/61、bundle id `com.zhanghangshuo.dong`、内置 ffmpeg + yt-dlp、无 PerfectLoop。
 > 签名仍为 **ad-hoc**（用户决定走开源 + AI 提示词安装路线，不做 Developer ID 公证）。
 > F1–F5.4 及 D1 为 v3.38 及更早的历史条目，保留作记录。各功能条目下方状态文字是发布前的历史快照，以本节为准。
+>
+> ✅ **2026-11-18 已统一发布 v3.40 / build 62**：下方 F10（PerfectLoop 一键安装器 + 三处下载入口）、
+> F5.5（抖音安全验证页可手动过 + 纯图文报错说人话）、F5.6（纯图文笔记自动生成静态壁纸）、
+> F11（底栏小图标调亮 + 描边图标上色）全部随此版发出。
+> **DMG**：`dist/Dòng-3.40.dmg`，size `61541183`，sha256 `b4426e65744c2cbfc46ef64269e715385f471f906e5bba3e8413d4d9a3532c74`，
+> `hdiutil verify` 通过；内 App 版本 3.40/62、bundle id `com.zhanghangshuo.dong`、内置 ffmpeg + yt-dlp、无 PerfectLoop。
+> 签名仍为 **ad-hoc**。版本号 3.39 → 3.40 已同步十语言 README；F1–F9 及 F5.5/F5.6/F10/F11 条目保留作历史记录。
+
+### F10 · 补齐「用户怎么下载」闭环：一键安装器 + 下载入口 — 状态：`已装机 / 安装器隔离实测通过 / 待真机确认 / 待发版`
+- **日期**：2026-11-17
+- **用户诉求**：F9 在 UI 写了"推荐安装 PerfectLoop 插件"，但用户问「跳出了用户要怎么下载」——推荐文案没有下载入口，闭环断了。本条补上：让用户看到推荐后能真的下载并一键装好。
+- **关键判断**：PerfectLoop 依赖约 332MB Python 环境（numpy/opencv/scikit-image），普通用户不可能自己配 venv。所以「让用户自己下载」的正确形态 = **一个双击即装的安装器**，而不是甩个源码仓库链接。
+- **改动文件**：
+  - `dist/perfectloop-plugin/安装 PerfectLoop 插件.command`（新建，一键安装器）：内置真源码 + requirements；引导装 uv → 建独立 venv(Python 3.11，不动系统 Python) → 用清华镜像分批装 7 个依赖(每个失败重试 3 次) → 部署到 `~/.local/share/VideoWallpaper/perfectloop-plugin/` → 清 pyc（防破坏签名）→ `--check` 自检 → 中文提示重启 Dòng；给出卸载方法。
+  - `dist/perfectloop-plugin/PerfectLoop插件-安装器.zip`（20KB，分发用；依赖联网下载所以包很小）：解压后 `.command` 可执行位与中文名均验证保留。
+  - `dist/perfectloop-plugin/安装说明.md`（新建，给下载页用）：写清占用(330MB 磁盘/340MB 峰值内存)、Gatekeeper 首次「右键打开」步骤、常见问题、卸载、MIT 许可。
+  - `Transcoder.swift`：新增 `perfectLoopInstallURL`（指向 `github.com/zhang-1-kael/dong/releases`，项目已有真实仓库；注释标明日后改官网只改这一处）+ `perfectLoopRecommendationWithLink`（带下载指引的纯文本）。
+  - `LibraryWindow.swift` 三处：① 拖拽浮层推荐文案换成带下载指引版(两行)；② 系统文件面板 `NSOpenPanel.message` 换成带下载指引版；③ 画面微调面板在"未启用插件"时新增可点击按钮「下载并安装 PerfectLoop 插件 ↗」，`tuneDownloadPluginTapped` 用 `NSWorkspace.shared.open(url)` 打开下载页。
+- **验证（2026-11-17）**：
+  - `bash -n` 语法通过；用隔离 HOME（`/tmp/pl-fakehome2`）跑完整安装器：uv 检测 → Python 3.11 venv → 清华镜像装依赖 → 部署 → 自检，全流程 **exit=0，自检 OK**（耗时 1m23s）。
+  - 首轮用官方 PyPI 源时遇 TLS 连接被断 + 单包下载近 4 分钟 → 改清华镜像 + 分批重试，隔离实测一次通过。
+  - zip 解压验证：中文文件名正确、`.command` 可执行位 `rwxr-xr-x` 保留。
+  - `VW_NO_PRESETS=1 zsh build.sh` 编译通过；按字节确认「下载并安装 PerfectLoop 插件」「安装说明：github.com/zhang-1-kael/dong/releases」已编入二进制。
+- **本机装机**：最小替换 `/Applications/Dòng.app` 二进制 + 清 pyc + 重签 verify 通过；回滚备份 `/tmp/vw_bin_backup_before_f10_1794917406`；重启 PID 39900。
+- **已上传（2026-11-17 20:26，gh 已登录 zhang-1-kael，有 repo 权限）**：安装器与说明已上传到 **v3.39 Release**（Latest），下载入口现在真实可用，无需再更新 App。
+  - `PerfectLoop-Plugin-Installer.zip`（18932 B）：`https://github.com/zhang-1-kael/dong/releases/download/v3.39/PerfectLoop-Plugin-Installer.zip`，实测 curl HTTP 200。
+  - `PerfectLoop-Plugin-README.md`（2178 B）：安装说明。
+  - **踩坑**：① 中文文件名经 gh 上传会被 GitHub 改成 `PerfectLoop.-.zip` / `default.md`，必须复制成英文名再传；② `zip` 命令打的中文名无 UTF-8 标记（flag_bits 0x0），macOS 归档工具双击解压会乱码——改用 Python `zipfile` 重打包，UTF-8 flag=True、可执行位 755 均保留。本地 `dist/` 里保留中文名文件便于识别，上传的是英文名副本。
+  - 若日后改用官网下载页，只需改 `Transcoder.perfectLoopInstallURL` 一处 + 重传文件。
+- **待办**：用户 GUI 确认三处下载入口（点"添加视频"看 message 两行、画面微调面板点「下载并安装」能打开 Releases 页并下载 zip）。
+- **状态**：已装机、插件已上传到 Release、下载闭环打通；改动留工作区，未提交、未 bump 版本（沿用 v3.39 Release，未另发版）。
 
 ### F9 · PerfectLoop 改为「用户自选插件」：App 不再内置，导入处推荐并如实标注占用 — 状态：`已装机 / 已验证 / 待真机确认 / 待发版`
 - **日期**：2026-11-16
@@ -158,6 +189,16 @@
 - **验证（2026-11-16）**：`swiftc -typecheck` 与 `swiftc -O` 全量编译通过（只有项目原有 deprecated 警告）。
 - **本机装机（2026-11-16 19:02）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（编译产物 1467072 B，签名后 1476672 B），`codesign --force --deep --sign -` 通过；偏好 / 图标 / Info.plist / bundle id / 版本未动；重启 PID 62373。回滚备份 `/tmp/vw_bin_backup_before_stutterfix`（F6.2 版）。
 - **待用户**：真机再拖一次，确认交界处不再抽搐、连续拖动跟手、滚动区不抖。手感 ok 后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F11 · 底栏小图标调亮 + 描边图标上色（深色模式更清楚） — 状态：`已装机 / 待真机确认 / 待发版`
+- **日期**：2026-11-18
+- **需求**：用户截图反馈壁纸库底部工具栏的小图标在深色模式下不太清楚，要求调亮、让图标里的纹路带上颜色。
+- **关键发现（渲染验证）**：SF Symbol 的 `paletteColors` 第二色对**单色描边符号**（power / plus / folder / gearshape）无效，只会显示主体色。用「白+橙」双色板实测这些图标仍是纯白，达不到"有颜色"。所以主体色本身必须是暖橙，不能指望第二色去染纹路。
+- **行为变化**：底栏关态/动作键图标（电源、加号、文件夹、设置、深浅色切换）从灰白描边（`labelColor` 0.58）改为浅暖橙 `Brand.gradTop`（悬停更亮）；开态（动态、锁屏跟随）保持饱和 `Brand.accent` + 淡雾底。状态区分靠开态淡雾底 + 图标形态变化，不靠灰/橙。透明度圆形图标与百分比文字改用固定亮墨色（`barInk`），不再随 window.appearance 翻成黑色压在深玻璃上。
+- **改动文件**：`LibraryWindow.swift` — `SettingPill.restyle()` 着色逻辑 + 新增 `refreshAppearance()`；`LibraryWindowController` 存 `addPill/folderPill/settingsPill/appearancePill/transparencyIcon` 为属性、新增静态 `barInk`、`applyWindowAppearance()` 里统一重绘底栏图标与文字。
+- **验证**：渲染对比图（`/tmp/symbols_preview.png`）确认三种配色实际效果，敲定暖橙方案；`swiftc -typecheck` 与 `swiftc -O` 全量编译通过（仅原有 deprecated 警告）。
+- **本机装机（2026-11-18 19:15）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（编译产物 1497328 B），`codesign --force --deep --sign -` + `-v --deep --strict` 通过；偏好 / 图标 / Info.plist / bundle id / 版本未动；重启 PID 48479。回滚备份 `/tmp/vw_bin_backup_before_icons`（14:19 版）。
+- **待用户**：真机确认底栏那排图标在深色模式下是否够亮够清楚。手感 ok 后随下一版本统一发布（不单独发版、不 bump 版本）。
 
 ### D1 · GitHub README 增加飞书用户群入口 — 状态：`已上线（文档，无需发版）`
 - **日期**：2026-11-16
@@ -339,9 +380,46 @@
 - **产品边界说明**：纯图文笔记（静态图 + BGM）物理上没有动态画面，做不成动态壁纸。用户若想要这类素材，需换真正会动的视频/实况图；或另做「静态图 + Ken Burns 动效 + 音乐合成视频」的新功能（未做）。
 - **待验**：用户 GUI 重贴天使短链，确认弹的是「纯图文」提示而非下载错视频。
 
+### F5.5 · 安全验证页可手动过 + 纯图文报错说人话 — 状态：`已装机 / 待用户回归`
+- **日期**：2026-11-17 ~ 11-18
+- **触发**：用户反馈「梵高星空链接我能做、别的用户做不了」；另一用户贴天使壁纸 `v.douyin.com/OgyvEKzB6MY/` 弹「跳过 2 条音频/无效地址」看不懂。
+- **排查结论（本机可控因素全部排除）**：
+  - 这条梵高链接是**普通视频** `video/7086081060781509899`，本机 12s 下载 13.5MB 成功；全新 WebKit store（模拟首次用户）8s 也成功 → 排除设备指纹未养熟。
+  - DMG（v3.39）二进制含全部 F5.4 特征串，`bin/ffmpeg`、`bin/yt-dlp` 齐全，`build.sh` 编译清单含 `DouyinWebFetcher.swift` → 排除发布包缺功能/缺工具。
+  - 完整中文口令经 `extractLink` 实测能正确抠出 URL → 排除口令解析。
+  - 结论：差异在我这台机器模拟不出来的**运行环境**（出口 IP 被要求安全验证 / 网络慢 / 系统版本）。用户后来确认「别的用户也会同样失败」的那条天使链接，则是内容本身问题（见下）。
+- **根因（天使链接 OgyvEKzB6MY / `7657719554118419941`）**：纯图文笔记——详情有 `images` 但 `duration=0`，`video` 字段只有 `audio` + `play_addr`（配乐音频，无画面）。note 页不发 `aweme/detail`（诊断 `AWEME_DETAIL` 0 次，只有推荐流），换 video 形态才抓到详情但直链全是音频 → 下载阶段 `hasVideoTrack` 全否，报「跳过 2 条音频」。**所有用户失败是正确行为**，不是 bug。
+- **改动文件**（全部 `DouyinWebFetcher.swift`）：
+  - **安全验证可视化**：抓取窗口从「无边框 + alpha 0 + 屏幕外」改为带标题栏、平时透明；JS 心跳探针检测验证页（URL `/verify`、`/captcha`、明确验证标题、滑块容器 class），命中后经 `__vwCaptcha` handler 在主线程把窗口移到屏幕中央、置顶、显示，并提示用户「请在弹出的窗口完成验证，会自动继续」——覆盖「别人出口 IP 被要求验证却看不见窗口、只能干等超时」的场景。
+  - **验证宽限期**：`awaitOnMain` 增加 `graceUntil` 参数；捕获验证信号后把等待截止延长 120s，给用户手动过滑块的时间（分段等待每 2s 重算 deadline，主线程/后台线程都支持）。
+  - **误判修复**：抖音每个页面都挂 `rmc-nocaptcha`（NoCaptcha=被动检测）iframe，初版 `[class*=captcha]`/`iframe[src*=captcha]` 会全量误判 → 收紧为只认 `/verify`、`/captcha` 路径 + 明确验证标题 + 滑块容器 class，排除 nocaptcha。诊断日志已确认普通视频/图文均不再误报。
+  - **报错说人话**：下载阶段所有直链都无视频轨（`skipped > 0`）时，报错从「没找到带画面的视频：已跳过 N 条音频」改为「这条是纯图文笔记（图片配背景音乐，画面本身不会动），做不成动态壁纸。请换一条会动的视频，或点开几秒会自动播放的实况图再分享。」
+- **验证**：梵高视频回归 4s 成功 13.5MB ✅；纯图文 OgyvEKzB6MY 不再误报验证、走纯图文判定 ✅；`build.sh` 全量编译通过 ✅。
+- **本机装机**：最小替换 + `codesign --force --deep --sign -` 重签 + `--verify --deep --strict` 通过；新 PID 52921；偏好 plist 30 键完好；回滚备份 `/tmp/vw_bin_backup_before_f55`。
+- **待用户回归**：GUI 重贴天使链接 OgyvEKzB6MY，确认弹「纯图文笔记」新文案；若有用户撞验证页，确认弹出可交互窗口、过验证后自动继续。
+
+### F5.6 · 纯图文笔记改为生成静态壁纸（不再拒绝）— 状态：`已装机 / 待用户回归`
+- **日期**：2026-11-18
+- **触发**：用户明确要求「纯图文笔记也要做成静态壁纸，不能被拒绝」——推翻 F5.4/F5.5 的「纯图文明确失败」策略。
+- **数据依据**：纯图文笔记的详情接口里 `images[].url_list` 就是高清原图直链（实测 `7657719554118419941` 有 2364×1774 的 webp，178KB），`images[].width/height` 给分辨率；`image_post_info`/`images` 两处都要收。此前 parse 只认视频轨、忽略静态图，最后还主动拒绝，导致这部分内容完全做不成壁纸。
+- **改动文件**（全部 `DouyinWebFetcher.swift`）：
+  - `Media` 新增 `stillImageURLs`：`parse()` 收集 `images[].url_list` / `download_url_list`（及 `image_post_info.images[]`），按 width×height 降序、无水印优先，去重保序。
+  - 新增 `downloadStillImage(_:title:ua:cookie:into:)`：逐个候选下载，校验 HTTP 200 + 体积 + ImageIO 可解码（排除错误页/音频），按 ImageIO UTI 定扩展名（webp/jpg/png/heic…），返回图片文件交给下游 `pumpImport` 已有的 `importStillImage` 分支做成 2 秒静止壁纸（`Transcoder.swift:802`，F1 能力，无需改下游）。
+  - 新增 `downloadMedia(_:into:)` 统一入口：优先视频/实况图；**视频候选全是音频（纯图文）下载失败时自动回退静态图**；没有视频候选时直接下静态图。关键修复：messageHandler 原守卫 `!media.urls.isEmpty` 会把「只有静态图」的详情直接丢弃，改为「视频或静态图任一非空」。
+  - 两轮详情都没抓到（note 页不发详情）时，用 SSR 封面图（`ssrCandidates`，仍是 `aweme_images`/`AWEME_DETAIL` 目标图、绝不碰 related 推荐流）兜底做静态壁纸，取代原「拒绝并提示换视频」。
+  - **并发修复（重要回归）**：F5.5 的 `awaitOnMain.deadline()` 每次重算 `Date()+timeout`，后台线程分段等待时 deadline 永远晚于 now → 死循环卡住（实测第 1 轮卡 90 秒不超时）。改为进入等待前固定 `base` 一次。
+  - 新增静态 UA 常量 `ua` 与 `pageTitle(from:)`（SSR 兜底时用 `抖音图文 <id>` 命名）。
+- **验证**（后台线程 harness，模拟 GUI 路径）：
+  - 纯图文 `OgyvEKzB6MY`（`7657719554118419941`）：第 1 轮 note 页 45s 超时 → 第 2 轮 video 页抓到详情（2 音频候选 + 6 静态图）→ 视频下载失败自动回退 → 下载 2364×1774 webp 178KB ✅；ffmpeg 解码验证 2364×1774 正常 ✅。
+  - 普通视频梵高 `svMOg2yFqSU/`：第 1 轮直抓成功，13.5MB mp4 ✅（未回归）。
+  - 实况图 `note/7693296625380641765`：第 2 轮成功，8 视频候选 + 6 静态图，优先做成动态 mp4 727KB ✅（静态图未被误用）。
+  - `build.sh` 全量编译通过 ✅。
+- **本机装机**：最小替换 + `codesign --force --deep --sign -` 重签 + `--verify --deep --strict` 通过；新 PID 79344（注意：必须先 `kill -9` 旧进程，磁盘换二进制不会重启已运行进程）；偏好 plist 30 键完好；回滚备份 `/tmp/vw_bin_backup_before_f56`。
+- **待用户回归**：GUI 重贴 `OgyvEKzB6MY` 天使图文链接，确认自动生成静态壁纸；认清「贴一条链接出一张壁纸」契约——多图笔记只取最大那张（取全部多张需改 fetch 返回类型，暂未做）。
+
 ---
 
-## 合并/发版检查清单（v3.39 · 2026-11-17 已逐项过）
+## 合并/发版检查清单（历史：v3.39 · 2026-11-17 已逐项过）
 
 - [x] 逐条核对上面所有 `Unreleased` 条目的状态，把 `待决策` / `有风险` 处理掉（尤其 F2 的依赖分发）
       → **F2 依赖分发已由 F9 定案**：PerfectLoop 改为用户自选插件、App 不内置，UI 推荐并如实标注占用；F7 两处误判（`bit_rate` 字段名 / 顶层标称宽高）已由 F7.1 修正并端到端验证。
@@ -353,9 +431,21 @@
 - [x] `package.sh` 出 DMG（含 `ApiBaseURL`）→ `dist/Dòng-3.39.dmg`，`hdiutil verify` 通过。
 - [x] 签名：**按用户决定走 ad-hoc + 开源 + AI 提示词安装路线，不做 Developer ID 公证**（`sign-notarize.sh --check` 本机无 Developer ID 与公证凭据）。
 - [x] 版本信息 3.38 → 3.39 已同步十语言 README（文字 + badge 两处）+ 确认 i18n 文档无版本号残留。
-- [ ] **【需用户手动·服务器】** 更新更新接口 `/api/update/check?version=…&channel=stable` 的元数据与 SHA256（交付参数见下方 Released 条目）。
+- [x] **【已完成·服务器】** 更新更新接口 `/api/update/check` 的元数据与 SHA256：2026-11-17 19:50 实测模拟 3.38 老用户请求（`build=60&version=3.38&channel=stable&arch=arm64`）返回 `update_available=true`、latest `3.39`，`file_size=61527463`、`sha256=7fb0b5b3…e80e2b` 与本地一致；下载端点跟随 302 返回 206、可达。3.39 客户端自身查新返回 `update_available=false`（已是最新，正常）。原「需用户手动」勾选是台账未同步，服务端实际早已更新。
 - [x] **【已完成·GitHub】** DMG 已上传到 GitHub Release `v3.39`（2026-11-17 19:40）：资产 `Dong-3.39.dmg`，size `61527463`，线上 digest `sha256:7fb0b5b3906cc9a8735ea8dd22a3c1d182635a3a5356448501720b707ee80e2b` 与本地一致，Release 为 Latest，说明含 ad-hoc 签名与 AI 提示词安装指引。`https://github.com/zhang-1-kael/dong/releases/tag/v3.39`
 - [x] 把 `Unreleased` 归档为 v3.39 发布条目（见下方 Released 段）；历史条目按约定保留不删。
+
+## 合并/发版检查清单（v3.40 · 2026-11-18）
+
+- [x] 上面 F10（插件下载入口）/ F5.5 / F5.6 / F11（底栏图标调亮）状态已核对；F10 重号已修正——「底栏图标调亮」改编号为 F11，与「插件下载入口 F10」区分。
+- [x] 确认最终版本号：`Info.plist` → **3.40 / 62**（用户 11-18 决定升版，不再沿用 3.39）。
+- [x] 全量构建：`zsh package.sh`（不带 `VW_NO_PRESETS=1`）11-18 三次构建成功（14:51 初版 / 19:50 加图标改动最终版），仅项目原有 deprecated 警告。
+- [x] `package.sh` 出 DMG → `dist/Dòng-3.40.dmg`，`hdiutil verify` VALID；挂载复核版本 3.40/62、API、内置 ffmpeg + yt-dlp、F5.5/F5.6/F10/F11 符号与中文文案齐全、ad-hoc 深度校验通过。
+- [x] 签名：按既定路线 **ad-hoc**（用户决定，不做 Developer ID 公证）。
+- [x] 版本 3.39 → 3.40 已同步十语言 README（正文 + badge 两处，各 3 处），复核无 3.39 残留；`tools/i18n_data.py` 无当前版本号（仅 v3.31 历史提示词 + 动态 META_URL），无需改。
+- [x] **【已完成·GitHub】** 创建 Release `v3.40`（2026-11-18 19:56，`draft=false`、非 prerelease）并上传 3 个资产：`Dong-3.40.dmg`（size `61541183`，线上 digest `sha256:b4426e65744c2cbfc46ef64269e715385f471f906e5bba3e8413d4d9a3532c74` 与本地一致）、`PerfectLoop-Plugin-Installer.zip`、`PerfectLoop-Plugin-README.md`。下载链接 HTTP 200。`https://github.com/zhang-1-kael/dong/releases/tag/v3.40`。注：`/releases/latest` 一时仍返回 v3.39（疑草稿转正式 created_at 排序），按 tag 访问与下载均正常。
+- [ ] **【待用户手动·服务器】** 更新 `/api/update/check` 到 3.40：file_size `61541183`、sha256 `b4426e65744c2cbfc46ef64269e715385f471f906e5bba3e8413d4d9a3532c74`、download `...?v=3.40&channel=stable`。探查确认：查询接口只读（`Allow: GET,HEAD,OPTIONS`），写接口 `/api/admin/releases` 存在但 401 需鉴权、`/admin` 后台需登录，AI 无凭据，只能由用户在官网后台手动填。漏填则 3.39 用户收不到 3.40 更新提示。
+- [x] **【已完成】** 把 `Unreleased` 归档为 Released 段 v3.40 条目；十语言 README / 云端台账同步完成。git 提交 + push 见下方。
 
 ## 本机环境备注（不属于发布内容）
 - 实际运行/安装的 App 是 `/Applications/Dòng.app`（bundle id `com.zhanghangshuo.dong`），**不是** `~/Applications/VideoWallpaper.app`；按文件名搜索容易漏，用 `pgrep -fl VideoWallpaper` 查。
@@ -365,6 +455,22 @@
 ---
 
 ## Released
+
+### v3.40 / build 62 — 2026-11-18
+
+**主题：抖音纯图文生成静态壁纸 + 安全验证可手动过 + PerfectLoop 一键安装下载闭环 + 底栏图标调亮。**
+
+- **抖音纯图文笔记生成静态壁纸（F5.6）**：纯图文笔记（图片 + BGM，本身没有动态画面）不再拒绝——详情接口 `images[].url_list` 的高清原图直链按分辨率降序择优下载，交给 F1 的 `importStillImage` 做成 2 秒静态壁纸；视频候选全是音频时自动回退静态图；两轮都没抓到详情时用 SSR 封面图兜底；仍严格只用目标图、绝不碰推荐流（防抓错）。修复 F5.5 遗留的等待 deadline 重算死循环。实测天使图文链接 `OgyvEKzB6MY` 下载到 2364×1774 webp，普通视频/实况图回归正常。
+- **安全验证页可手动过（F5.5）**：抖音对部分出口 IP 弹的滑块/短信验证页，过去窗口全透明、用户看不见只能干等超时；现在检测到验证页就把窗口显示到屏幕中央、置顶，并延长等待 120s 供用户手动过验证。收紧检测条件排除抖音每页都挂的 `rmc-nocaptcha` 被动组件，避免误判。纯图文报错改为说人话的提示。
+- **PerfectLoop 一键安装 + 下载入口（F10）**：F9 只在 UI 推荐插件但没下载入口，闭环断裂；补齐——三处（拖拽浮层 / 文件面板 message / 微调面板按钮）加下载指引，「下载并安装 PerfectLoop 插件 ↗」按钮打开项目 Releases 页。一键安装器 zip（内置 uv 引导 + 隔离 venv + 清华镜像装 7 依赖 + 自检，隔离 HOME 实测 exit=0）已上传到 v3.39 Release，v3.40 沿用该入口。
+- **底栏图标调亮（F11）**：深色模式下底栏关态/动作键图标从灰白描边改浅暖橙（悬停更亮），开态保持饱和主题橙 + 淡雾底；透明度圆环与百分比改固定亮墨色，不再随深浅色切换翻黑压在深玻璃上。
+
+**发布产物与交付参数：**
+- DMG：`dist/Dòng-3.40.dmg`，size `61541183`，sha256 `b4426e65744c2cbfc46ef64269e715385f471f906e5bba3e8413d4d9a3532c74`
+- `version` = `3.40`，`build` = `62`
+- `download` = `https://dongisgood.coze.site/api/download?v=3.40&channel=stable`
+- 签名：ad-hoc（未公证）；校验 `hdiutil verify` VALID、深度签名校验通过。
+- 上传：GitHub Release `v3.40` + 官网更新接口（见上方 v3.40 检查清单）。
 
 ### v3.39 / build 61 — 2026-11-17
 

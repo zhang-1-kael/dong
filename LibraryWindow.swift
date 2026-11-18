@@ -1634,6 +1634,9 @@ final class SettingPill: NSView {
         restyle()
     }
 
+    /// 外观切换（深/浅色）后重新着色：图标亮度跟底栏玻璃走，不跟 window.appearance
+    func refreshAppearance() { restyle() }
+
     /// 气泡里显示的名字（开关型跟着状态走：动态 / 静态）
     var tipText: String { isAction ? title : shownText }
 
@@ -1651,19 +1654,25 @@ final class SettingPill: NSView {
 
     private func restyle() {
         // 全透明悬浮：底色几乎看不见，靠图标本身表达状态
-        //   开着 → 主题色图标 + 一层很淡的主题色雾
-        //   关着 → 灰图标，什么都没有
-        //   动作键 → 灰图标，悬停才浮现一层淡雾
+        //   开着 → 饱和主题橙 + 一层很淡的同色雾
+        //   关着/动作键 → 浅暖橙：底栏玻璃恒为深色，灰白描边在上面糊成一团，
+        //                  换成有颜色的暖橙既亮又清楚（用户诉求）
+        // 状态区分靠「开态有淡雾底 + 图标形态变化」，不靠灰/橙，所以两态都用橙也不冲突。
+        // 注意：SF Symbol 的 paletteColors 第二色对单色描边符号（power/plus/folder/
+        // gearshape）不起作用，所以主体色本身必须带颜色，不能指望第二色上纹路。
         let ink: NSColor
+        let palette: [NSColor]
         if isOn && !isAction {
             ink = Brand.accent
+            palette = [Brand.accent, Brand.gradBottom]   // 多色符号给一点层次
         } else {
-            ink = NSColor.labelColor.withAlphaComponent(hovered ? 0.92 : 0.58)
+            ink = hovered ? Brand.gradTop : Brand.gradTop.withAlphaComponent(0.92)
+            palette = [ink, Brand.accent]                // 多色符号的里层用深一档橙
         }
 
         if let base = NSImage(systemSymbolName: shownSymbol, accessibilityDescription: nil) {
             let cfg = NSImage.SymbolConfiguration(pointSize: 12.5, weight: .medium)
-                .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
+                .applying(NSImage.SymbolConfiguration(paletteColors: palette))
             iconView.image = base.withSymbolConfiguration(cfg) ?? base
         }
 
@@ -2108,11 +2117,14 @@ final class DropOverlay: NSView {
         sub.alignment = .center
         sub.translatesAutoresizingMaskIntoConstraints = false
 
-        // 导入时顺带推荐自选插件，并把实测占用写清楚（用户有权先知道代价）。
-        let rec = NSTextField(labelWithString: Transcoder.perfectLoopRecommendation)
+        // 导入时顺带推荐自选插件，写清实测占用 + 去哪下载（用户有权先知道代价）。
+        let rec = NSTextField(labelWithString: Transcoder.perfectLoopRecommendationWithLink)
         rec.font = .systemFont(ofSize: 10)
         rec.textColor = NSColor.white.withAlphaComponent(0.5)
         rec.alignment = .center
+        rec.maximumNumberOfLines = 2
+        rec.lineBreakMode = .byWordWrapping
+        rec.preferredMaxLayoutWidth = 420
         rec.translatesAutoresizingMaskIntoConstraints = false
 
         let stack = NSStackView(views: [icon, text, sub, rec])
@@ -2307,6 +2319,12 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let appearance = NSAppearance(named: LibraryBackdrop.darkMode ? .darkAqua : .aqua)
         window?.appearance = appearance
         (window?.contentView as? NSVisualEffectView)?.appearance = appearance
+        // 底栏图标/文字用固定亮墨色，不随 window.appearance 翻成黑色压在深玻璃上
+        let ink = Self.barInk
+        transparencyIcon?.contentTintColor = ink
+        barPct?.textColor = ink
+        for p in [enabledPill, lockPill, autoPill, addPill, folderPill,
+                  settingsPill, appearancePill] { p?.refreshAppearance() }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -2392,13 +2410,16 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         // 库里有壁纸之后也得有个地方能继续添加。
         let addPill = SettingPill(actionTitle: "添加文件", symbol: "plus")
         addPill.onTap = { [weak self] in self?.pickFiles() }
+        self.addPill = addPill
 
         // 打开文件夹：同款胶囊，但不是开关，跟开关之间用一条细线隔开
         let folderPill = SettingPill(actionTitle: "打开文件夹", symbol: "folder")
         folderPill.onTap = { [weak self] in self?.delegate?.libraryRevealFolder() }
+        self.folderPill = folderPill
 
         // 设置：匿名统计开关 + 检查更新，都放进一个小弹层，不占底栏地方
         let settingsPill = SettingPill(actionTitle: "设置", symbol: "gearshape")
+        self.settingsPill = settingsPill
         settingsPill.onTap = { [weak self, weak settingsPill] in
             guard let self, let anchor = settingsPill else { return }
             self.toggleSettings(from: anchor)
@@ -2407,6 +2428,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         // 深浅色：壁纸库窗口外观手动切换。默认深色（照录屏定的），浅色给喜欢亮底的用户。
         // 微调入口搬进了卡片右下角（悬停出现，就调那一张），底栏不再放「微调」磁贴。
         let appearancePill = SettingPill(title: "深色", symbol: "mooncircle.fill", on: LibraryBackdrop.darkMode)
+        self.appearancePill = appearancePill
         appearancePill.onText = "深色"
         appearancePill.offText = "浅色"
         appearancePill.onSymbol = "mooncircle.fill"
@@ -2426,8 +2448,9 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         transparencyIcon.image = NSImage(systemSymbolName: "circle.lefthalf.filled",
                                         accessibilityDescription: "窗口透明度")
         transparencyIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 10, weight: .medium)
-        transparencyIcon.contentTintColor = .secondaryLabelColor
+        transparencyIcon.contentTintColor = Self.barInk
         transparencyIcon.translatesAutoresizingMaskIntoConstraints = false
+        self.transparencyIcon = transparencyIcon
 
         let barSlider = MiniSlider()
         barSlider.value = LibraryBackdrop.transparency
@@ -2444,7 +2467,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
         let barPct = NSTextField(labelWithString: "\(Int(round(LibraryBackdrop.transparency * 100)))%")
         barPct.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .regular)
-        barPct.textColor = .secondaryLabelColor
+        barPct.textColor = Self.barInk
         barPct.alignment = .right
         barPct.translatesAutoresizingMaskIntoConstraints = false
         barPct.widthAnchor.constraint(equalToConstant: 26).isActive = true
@@ -2596,6 +2619,10 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var enabledPill: SettingPill?
     private var lockPill: SettingPill?
     private var autoPill: SettingPill?
+    private var addPill: SettingPill?
+    private var folderPill: SettingPill?
+    private var settingsPill: SettingPill?
+    private var appearancePill: SettingPill?
     /// 设置弹层（匿名统计开关 + 检查更新）
     private var settingsPop: NSPopover?
     /// 画面微调弹层
@@ -2609,6 +2636,13 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     /// 底栏常驻的「窗口透明度」：滑杆 + 百分比，和设置弹层里那个是同一份值
     private var barSlider: MiniSlider?
     private var barPct: NSTextField?
+    private var transparencyIcon: NSImageView?
+    /// 底栏图标/文字的固定墨色：底栏玻璃恒为深色，亮色才看得清（不跟 window.appearance）
+    private static var barInk: NSColor {
+        LibraryBackdrop.darkMode
+            ? NSColor.white.withAlphaComponent(0.94)
+            : NSColor.white.withAlphaComponent(0.86)
+    }
     private var settingsTimer: Timer?
     private var hoverTestStarted = false
     /// 提示的自动收起计时器（换新内容时作废重排）
@@ -2806,6 +2840,15 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · \(fpsText) · \(loopText) · \(fadeText)"))
         if !pluginOn {
             stack.addArrangedSubview(caption(Transcoder.perfectLoopRecommendation, tint: .controlAccentColor))
+            // 唯一能点击的入口：打开插件下载/安装说明页（一键安装器在那页下载）
+            let getPlugin = NSButton(title: "下载并安装 PerfectLoop 插件 ↗",
+                                     target: self, action: #selector(tuneDownloadPluginTapped))
+            getPlugin.bezelStyle = .rounded
+            getPlugin.controlSize = .small
+            getPlugin.font = .systemFont(ofSize: 11.5, weight: .medium)
+            getPlugin.contentTintColor = .controlAccentColor
+            stack.addArrangedSubview(getPlugin)
+            getPlugin.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
         }
 
         vc.view = root
@@ -2838,6 +2881,12 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     @objc private func tuneResetTapped() {
         Tuning.reset()
         tuningPop?.contentViewController = makeTuningController()
+    }
+
+    /// 打开 PerfectLoop 插件的下载/安装说明页（一键安装器在那页下载）
+    @objc private func tuneDownloadPluginTapped() {
+        guard let url = URL(string: Transcoder.perfectLoopInstallURL) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func makeSettingsController() -> NSViewController {
@@ -3321,7 +3370,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             .movie, .mpeg4Movie, .quickTimeMovie, .image,
             .jpeg, .png, .heic, .webP, .tiff, .bmp, .gif,
         ]
-        panel.message = "选视频或图片（可多选）；图片会做成静态壁纸\n\(Transcoder.perfectLoopRecommendation)"
+        panel.message = "选视频或图片（可多选）；图片会做成静态壁纸\n\(Transcoder.perfectLoopRecommendationWithLink)"
         if panel.runModal() == .OK {
             delegate?.libraryAdd(urls: panel.urls)
         }
