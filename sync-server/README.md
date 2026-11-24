@@ -1,0 +1,88 @@
+# Dòng 同步服务
+
+给「壁纸跟着账号走」用的最小后端。零依赖，一个 Node 进程 + 一个目录。
+
+## 它做什么
+
+- 邮箱 + 密码登录（scrypt 加盐，不存明文）
+- 每个账号一份壁纸清单（文件名、大小、sha256、顺序、网页壁纸地址）
+- 壁纸文件本身也存着（换设备时直接下载，不依赖原链接还活着）
+- 每账号默认 2 GB 配额，单文件上限 512 MB
+
+不做什么：不记录你的使用行为（那是 App 里另一套匿名统计，可以单独关掉）。
+
+## 跑起来
+
+```bash
+cd sync-server
+node server.js            # 监听 :8787，数据写到 ./data
+```
+
+首次运行会建 `data/`，直接 `tar` 走就是完整备份。
+
+### 环境变量
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `PORT` | `8787` | 监听端口 |
+| `DATA_DIR` | `./data` | 数据目录 |
+| `DONG_QUOTA_GB` | `2` | 每账号存储上限 |
+| `DONG_MAX_ASSET_MB` | `512` | 单个壁纸文件上限 |
+| `DONG_TOKEN_DAYS` | `60` | 登录有效期（天） |
+
+### 放到服务器上
+
+最省事的三种：
+
+1. **一台 VPS**：`node server.js` 挂 systemd，前面用 Caddy / Nginx 反代到 443。
+   ```caddy
+   sync.yourdomain.com {
+       reverse_proxy 127.0.0.1:8787
+   }
+   ```
+2. **Render / Railway / Fly.io**：Start Command 填 `node server.js`，
+   挂一个持久卷到 `/data`，并把 `DATA_DIR=/data`。
+3. **家里的 Mac / NAS**：同理，反代出去即可（注意上行带宽和电费）。
+
+上线之后，把 App 的 `Info.plist` 里加一个键：
+
+```xml
+<key>SyncBaseURL</key>
+<string>https://sync.yourdomain.com</string>
+```
+
+没填 `SyncBaseURL` 就退回 `ApiBaseURL`（现在指向官网）；两个都没有就视为未配置，
+App 里「登录」会直接提示不可用，不会往猜的域名发密码。
+
+## 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/healthz` | 探活 |
+| POST | `/api/auth/register` | `{email,password}` → `{token,...}` |
+| POST | `/api/auth/login` | 同上 |
+| POST | `/api/auth/logout` | 作废当前 token |
+| GET | `/api/me` | 邮箱、配额、已用字节 |
+| GET | `/api/sync/manifest` | 清单（含 `rev`） |
+| PUT | `/api/sync/manifest` | 写清单，带 `if-match: <rev>`，对不上返回 409 |
+| PUT | `/api/sync/asset/:id` | 上传壁纸（octet-stream） |
+| GET | `/api/sync/asset/:id` | 下载壁纸 |
+| DELETE | `/api/sync/asset/:id` | 删除（客户端删壁纸后回收配额） |
+
+`id` 规则：视频是 `v-<文件名>`，网页壁纸是 `w-<stream id>`。清单里的删除是墓碑
+（`deleted: true`），保留 30 天，避免另一台设备把刚删的又推回来。
+
+## 安全边界
+
+- 密码用 `scrypt`（N=16384 默认）加盐，`timingSafeEqual` 比对
+- token 是 32 字节随机数，服务端只存它的 sha256；有效期 60 天
+- 所有壁纸读写都带 `authorization: Bearer`，且只能碰自己 `userId` 目录下的文件
+- 上传路径做白名单清洗（`[A-Za-z0-9._-]`），杜绝 `../`
+- 没有管理员接口、没有跨账号读取
+
+## 已知限制（v1 有意为之）
+
+- 冲突策略是「谁更新谁赢」，不保留历史版本
+- 重命名等于删一条加一条（App 用文件名当身份），会重新上传一次
+- 没有邮箱验证 / 找回密码；账号在服务端 `data/accounts.json` 里，忘了密码得手工删那条重注册
+- 不加密存储：文件在服务器磁盘上是原样 mp4（传输靠 HTTPS）
