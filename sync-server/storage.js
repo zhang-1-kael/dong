@@ -180,10 +180,15 @@ async function put(uid, aid, req) {
   }
 
   if (!GW_TOKEN) throw new Error("SYNC_INTERNAL_TOKEN 没配置，gateway 模式不可用");
-  const r = await gwUpload(uid, aid, req);
   const map = await readMap(uid);
+  const oldKey = map[aid];
+  const r = await gwUpload(uid, aid, req);
   map[aid] = r.key;
   await writeMap(uid, map);
+  // 网关每次上传都会追加新 UUID，同名覆盖会留下旧对象 → 主动回收，别白占配额
+  if (oldKey && oldKey !== r.key) {
+    await gwJSON("DELETE", "/api/sync-storage/object", { key: oldKey });
+  }
   return { bytes: r.bytes, sha256: r.sha256 };
 }
 
