@@ -30,6 +30,11 @@ node server.js            # 监听 :8787，数据写到 ./data
 | `DONG_QUOTA_GB` | `2` | 每账号存储上限 |
 | `DONG_MAX_ASSET_MB` | `512` | 单个壁纸文件上限 |
 | `DONG_TOKEN_DAYS` | `60` | 登录有效期（天） |
+| `DONG_STORAGE` | `disk` | 壁纸文件存哪：`disk` 本地磁盘 / `gateway` 官网存储网关 |
+| `SYNC_GATEWAY_BASE` | `https://dongisgood.coze.site` | gateway 模式的网关卡地址（与官网同域） |
+| `SYNC_INTERNAL_TOKEN` | 无 | gateway 模式的内部凭证，**由部署方注入，仓库里不存** |
+| `DONG_GATEWAY_DOWNLOAD` | `redirect` | `redirect` 直接 302 给客户端直连对象存储；`pipe` 由本进程转发 |
+| `DONG_GATEWAY_STRICT` | 未设 | 设 `1` 时，gateway 自检失败直接退出（默认只报错不退出） |
 
 ### 放到服务器上
 
@@ -54,6 +59,23 @@ node server.js            # 监听 :8787，数据写到 ./data
 
 没填 `SyncBaseURL` 就退回 `ApiBaseURL`（现在指向官网）；两个都没有就视为未配置，
 App 里「登录」会直接提示不可用，不会往猜的域名发密码。
+
+## 存储模式
+
+| 模式 | 壁纸文件位置 | 适用 |
+|---|---|---|
+| `disk` | `DATA_DIR/users/<uid>/assets/<id>.bin` | 联调用。**宿主磁盘可能被平台清理，别给真实用户用** |
+| `gateway` | 官网内部网关 `/api/sync-storage/*` → 平台对象存储 | 正式环境 |
+
+`gateway` 模式的几个行为：
+
+- 上传：把入站请求**管道**给网关，边传边算 sha256，不落临时文件；返回的 key（形如 `sync/{uid}/{aid}_a6382452`）
+  记在 `users/<uid>/assets.json`，assetId → key 一一对应
+- 下载：向网关换 1 小时签名直链，再 **302** 给客户端，512MB 不经过本进程
+- 删除：按映射找到 key 后删网关对象，同时清掉映射
+- 用量：网关的 list 不返回文件大小，`/api/me` 的 `usedBytes` 改为按清单里 `bytes` 汇总
+- 启动自检：向网关发 `list?prefix=sync/selfcheck/`，失败时**日志明确报错 + `/healthz` 返回 503**，
+  但默认**不退出进程**（托管平台会反复重启，日志反而更难查）；需要「起不来就别起」时设 `DONG_GATEWAY_STRICT=1`
 
 ## 限流
 

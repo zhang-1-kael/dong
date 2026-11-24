@@ -19,6 +19,7 @@ const fs = require("node:fs");
 const fsp = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const storage = require("./storage");
 
 const PORT = Number(process.env.SYNC_PORT || process.env.PORT || 8787);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
@@ -60,6 +61,9 @@ setInterval(() => {
   const now = Date.now();
   for (const [k, v] of hits) if (v.resetAt < now) hits.delete(k);
 }, 60_000).unref();
+
+storage.init(DATA_DIR, { maxAsset: MAX_ASSET });
+let gatewayHealth = { ok: true, mode: storage.mode() };
 
 const F = {
   accounts: path.join(DATA_DIR, "accounts.json"),
@@ -125,21 +129,7 @@ async function readManifest(userId) {
 }
 
 async function usedBytes(userId) {
-  const dir = assetDir(userId);
-  let total = 0;
-  let names = [];
-  try {
-    names = await fsp.readdir(dir);
-  } catch {
-    return 0;
-  }
-  for (const n of names) {
-    try {
-      const st = await fsp.stat(path.join(dir, n));
-      if (st.isFile()) total += st.size;
-    } catch {}
-  }
-  return total;
+  return storage.usedBytes(userId);
 }
 
 // ── HTTP ────────────────────────────────────────────────────
@@ -198,7 +188,15 @@ async function handle(req, res) {
   const p = url.pathname;
   const method = req.method || "GET";
 
-  if (p === "/healthz") return send(res, 200, { ok: true, time: Date.now() });
+  if (p === "/healthz") {
+    const healthy = gatewayHealth.ok;
+    return send(res, healthy ? 200 : 503, {
+      ok: healthy,
+      time: Date.now(),
+      storage: gatewayHealth.mode,
+      ...(healthy ? {} : { error: gatewayHealth.error }),
+    });
+  }
 
   // ---- 注册 ----
   if (p === "/api/auth/register" && method === "POST") {
@@ -308,57 +306,49 @@ async function handle(req, res) {
   const assetMatch = /^\/api\/sync\/asset\/([^/]+)$/.exec(p);
   if (assetMatch) {
     const id = safeId(decodeURIComponent(assetMatch[1]));
-    const file = path.join(assetDir(user.id), id + ".bin");
     if (method === "PUT") {
       const declared = req.headers["x-content-length"] || req.headers["content-length"];
       const size = Number(declared || 0);
       if (size > MAX_ASSET) return fail(res, 413, "这张壁纸太大了");
-      const add = size - (await fsp.stat(file).then((s) => s.size).catch(() => 0));
-      const used = await usedBytes(user.id);
-      if (used + add > user.quotaBytes) return fail(res, 507, "空间不够了");
 
-      await fsp.mkdir(assetDir(user.id), { recursive: true });
-      const tmp = file + ".part";
-      const hash = crypto.createHash("sha256");
-      let got = 0;
-      await new Promise((resolve, reject) => {
-        const out = fs.createWriteStream(tmp);
-        req.on("data", (c) => {
-          got += c.length;
-          if (got > MAX_ASSET) {
-            req.destroy();
-            reject(new Error("too large"));
-            return;
-          }
-          hash.update(c);
-        });
-        req.pipe(out);
-        out.on("finish", resolve);
-        out.on("error", reject);
-        req.on("error", reject);
-      }).catch(async (e) => {
-        await fsp.rm(tmp, { force: true });
-        throw e;
-      });
-      await fsp.rename(tmp, file);
-      return send(res, 200, { id, bytes: got, sha256: hash.digest("hex") });
+      // 覆盖上传时，先算「净增量」再判配额
+      const used = await usedBytes(user.id);
+      const existing = await storage.locate(user.id, id).catch(() => null);
+      const replaceBytes = existing && existing.size ? existing.size : 0;
+      if (used - replaceBytes + size > user.quotaBytes) return fail(res, 507, "空间不够了");
+
+      try {
+        const r = await storage.put(user.id, id, req);
+        return send(res, 200, { id, bytes: r.bytes, sha256: r.sha256 });
+      } catch (e) {
+        const msg = String(e.message || e);
+        if (msg.includes("too large")) return fail(res, 413, "这张壁纸太大了");
+        console.error("[dong-sync] put failed", msg);
+        return fail(res, 502, "存储写入失败，请重试");
+      }
     }
     if (method === "GET") {
+      const hit = await storage.locate(user.id, id);
+      if (!hit) return fail(res, 404, "云端没有这个文件");
+      if (hit.kind === "url") {
+        // 302 给 App 直连对象存储，512MB 不经过本进程
+        return send(res, 302, Buffer.alloc(0), { location: hit.url, "cache-control": "no-store" });
+      }
       try {
-        const st = await fsp.stat(file);
+        const st = await fsp.stat(hit.file);
         res.writeHead(200, {
           "content-type": "application/octet-stream",
           "content-length": st.size,
           "cache-control": "no-store",
         });
-        fs.createReadStream(file).pipe(res);
+        fs.createReadStream(hit.file).pipe(res);
         return;
       } catch {
         return fail(res, 404, "云端没有这个文件");
       }
     }
     if (method === "DELETE") {
-      await fsp.rm(file, { force: true });
+      await storage.del(user.id, id);
       return send(res, 200, { ok: true });
     }
   }
@@ -374,6 +364,20 @@ const server = http.createServer((req, res) => {
   });
 });
 
-initStore().then(() => {
-  server.listen(PORT, () => console.log(`[dong-sync] listening on :${PORT}`));
-});
+initStore()
+  .then(() => storage.selfCheck())
+  .then((health) => {
+    gatewayHealth = health;
+    if (health.ok) {
+      console.log(`[dong-sync] storage=${health.mode}` + (health.gateway ? ` gateway=${health.gateway}` : ""));
+    } else {
+      // 不直接退出：托管平台会不停重启，日志被刷屏反而看不出原因。
+      // 需要「起不来就别起」的语义时设 DONG_GATEWAY_STRICT=1。
+      console.error(`[dong-sync] 存储自检失败：${health.error}`);
+      if (process.env.DONG_GATEWAY_STRICT === "1") process.exit(1);
+    }
+  })
+  .catch((e) => console.error("[dong-sync] storage selfcheck error", e))
+  .then(() => {
+    server.listen(PORT, () => console.log(`[dong-sync] listening on :${PORT}`));
+  });
