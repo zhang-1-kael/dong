@@ -65,16 +65,21 @@ enum LibraryOwner {
         return "已切换：收起 \(moved) 张，换出这个账号的 \(restored) 张"
     }
 
-    /// 退出登录：把账号的壁纸移出活动库（删除），再还原登录前的匿名库
+    /// 退出登录：把账号的壁纸移出活动库，再还原登录前的匿名库。
+    ///
+    /// **绝不删除文件**。之前这里写的是 deleteContents，结果用户退出登录时，
+    /// 8 张还没传完的壁纸被一起删了（云端没有副本，永久丢失）。
+    /// 现在一律移到 `library-cache/<账号>/`：界面上看不见（满足隐私要求），
+    /// 但重新登录能原样换回来，也不会因为「没传完」而丢。
     @discardableResult
     static func restoreAnonymous() -> String {
         let prev = current
         guard prev != anonymous else { return "当前就是本地库" }
 
-        let removed = deleteContents(Source.libraryDir)
+        let stashed = move(Source.libraryDir, to: cacheDir(prev))
         let restored = move(cacheDir(anonymous), to: Source.libraryDir)
         setCurrent(anonymous)
-        return "已退出：移除 \(removed) 张，还原本地 \(restored) 张"
+        return "已退出：收起 \(stashed) 张到该账号的缓存，还原本地 \(restored) 张"
     }
 
     // MARK: 文件操作
@@ -95,17 +100,6 @@ enum LibraryOwner {
             let dst = to.appendingPathComponent(item.lastPathComponent)
             try? fm.removeItem(at: dst)          // 同名旧文件直接替换
             if (try? fm.moveItem(at: item, to: dst)) != nil { n += 1 }
-        }
-        return n
-    }
-
-    @discardableResult
-    private static func deleteContents(_ dir: URL) -> Int {
-        let fm = FileManager.default
-        let items = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        var n = 0
-        for item in items {
-            if (try? fm.removeItem(at: item)) != nil { n += 1 }
         }
         return n
     }

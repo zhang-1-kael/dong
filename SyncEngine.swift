@@ -289,6 +289,22 @@ enum SyncEngine {
 
         // 上传失败要重试一次：清单里先不写它，免得下次以为已同步
         var failedIds = Set<String>()
+        // 边传边写清单：不然中途退出登录，账号里就是空的（用户遇到的就是这个）
+        var liveRev = remote.rev
+        var uploadedItems: [RemoteItem] = []
+
+        func pushPartial() {
+            var items = remote.items
+            let known = Set(items.map { $0.id })
+            for it in uploadedItems where !known.contains(it.id) { items.append(it) }
+            guard !items.isEmpty else { return }
+            let order = local.map { $0.id }.filter { id in items.contains { $0.id == id && !$0.isDeleted } }
+            if case let .success((rev, _)) = AccountAPI.putManifest(token: session.token,
+                                                                    ifMatch: liveRev,
+                                                                    items: items, order: order) {
+                liveRev = rev
+            }
+        }
 
         // 进度要按「整个库」显示：已经同步过的也算进去，
         // 否则用户看到「第 3/8 张」会以为库里只有 8 张（其实 21 张，13 张早传完了）。
@@ -370,6 +386,11 @@ enum SyncEngine {
                     if state.synced == nil { state.synced = [:] }
                     state.synced?[item.id] = item.sha256
                     saveState(support, state)
+                    uploadedItems.append(RemoteItem(id: item.id, name: item.name, kind: item.kind,
+                                                    bytes: item.bytes, sha256: item.sha256,
+                                                    updatedAt: item.updatedAt, webURL: item.webURL,
+                                                    deleted: false))
+                    pushPartial()     // 传一张就登记一张，断了也不至于全丢
                 case let .failure(e):
                     failedIds.insert(item.id)
                     report.errors.append("\(item.name)：\(e.localizedDescription)")
@@ -413,7 +434,7 @@ enum SyncEngine {
         let finalOrder = order.filter { !failedIds.contains($0) }
 
         emit("正在更新云端清单…")
-        switch AccountAPI.putManifest(token: session.token, ifMatch: remote.rev,
+        switch AccountAPI.putManifest(token: session.token, ifMatch: liveRev,
                                       items: finalItems, order: finalOrder) {
         case let .success((rev, _)):
             state.rev = rev

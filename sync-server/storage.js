@@ -254,6 +254,39 @@ async function usedBytes(uid) {
   }
 }
 
+/**
+ * 自愈：把网关里已有的对象重新挂回 assets.json。
+ *
+ * 网关的 key 形如 `sync/<uid>/<assetId>_<8位uuid>`，assetId 就在里面——
+ * 所以哪怕 assets.json 被清掉（容器重建、快照丢了），对象还在就还能认回来。
+ * 这是「壁纸找不到」的最后一道保险。
+ */
+async function repairIndex(uid) {
+  if (MODE !== "gateway") return 0;
+  const prefix = `sync/${uid}/`;
+  const r = await gwJSON("GET", "/api/sync-storage/list", { prefix });
+  if (r.status !== 200) return 0;
+  const keys = r.body.keys || [];
+  const map = await readMap(uid);
+  const known = new Set(Object.values(map));
+  let added = 0;
+  for (const key of keys) {
+    if (known.has(key)) continue;
+    const rest = String(key).slice(prefix.length);
+    const m = /^(.*)_([0-9a-f]{8})$/.exec(rest);
+    const aid = m ? m[1] : rest;
+    if (!aid || map[aid]) continue;
+    map[aid] = key;
+    known.add(key);
+    added += 1;
+  }
+  if (added) {
+    await writeMap(uid, map);
+    console.log(`[dong-sync] 自愈：${uid} 挂回 ${added} 个对象`);
+  }
+  return added;
+}
+
 /** 启动自检：gateway 模式下确认凭证和连通性，别让服务「起来了但一上传就 401」 */
 async function selfCheck() {
   if (MODE !== "gateway") return { ok: true, mode: MODE };
@@ -315,5 +348,5 @@ function fetchURL(url) {
 module.exports = {
   init, put, locate, del, usedBytes, selfCheck,
   mode, configured, downloadMode: () => GW_DOWNLOAD,
-  gwJSON, gwPutBuffer, fetchURL,
+  gwJSON, gwPutBuffer, fetchURL, repairIndex,
 };

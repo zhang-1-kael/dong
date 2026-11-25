@@ -500,6 +500,14 @@ const server = http.createServer((req, res) => {
     console.error("[dong-sync] 快照恢复异常", String(e.message || e));
   }
   await initStore();
+  // 启动时给每个用户做一次「对象→映射」自愈
+  if (storage.configured()) {
+    const usersDir = path.join(DATA_DIR, "users");
+    const uids = await fsp.readdir(usersDir).catch(() => []);
+    for (const uid of uids) {
+      try { await storage.repairIndex(uid); } catch {}
+    }
+  }
 })()
   .then(() => storage.selfCheck())
   .then((health) => {
