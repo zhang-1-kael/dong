@@ -56,6 +56,8 @@ final class SyncCenter {
     private(set) var progress: SyncEngine.Progress?
     /// 调试：只摆拍不联网（截「同步中」的界面时用）
     private var previewOnly = false
+    /// 切换壁纸库归属期间不跑同步，否则会把「不该属于这个账号的本地壁纸」传上去
+    private var isSwitchingLibrary = false
     /// 上一次是不是因为登录过期被打断（设置里据此提示「重新登录」）
     private(set) var lastExpired = false
 
@@ -106,12 +108,40 @@ final class SyncCenter {
         AccountStore.save(s)
         status = .idle
         watchLibrary()
-        refreshProfile()
-        syncNow()
+
+        // 规则（用户 2026-11-25）：登录后只显示这个账号的壁纸；账号是空的才把本地并进去。
+        // 必须先切库再同步，否则会把本地壁纸误传进别人的账号。
+        isSwitchingLibrary = true
+        let token = s.token
+        let userId = s.userId
+        queue.async { [weak self] in
+            guard let self else { return }
+            var empty = true
+            if case let .success(m) = AccountAPI.manifest(token: token) {
+                empty = m.items.filter { !$0.isDeleted }.isEmpty
+            }
+            DispatchQueue.main.async {
+                let msg = LibraryOwner.activate(accountId: userId, remoteIsEmpty: empty)
+                SyncEngine.log(Source.support, "切换壁纸库：\(msg)（cloudEmpty=\(empty)）")
+                self.isSwitchingLibrary = false
+                // 库换了，界面和桌面都要重读
+                NotificationCenter.default.post(name: SyncCenter.libraryDidChange, object: nil)
+                self.refreshProfile()
+                self.syncNow()
+            }
+        }
     }
 
     func signOut() {
         if let s = session { AccountAPI.logout(token: s.token) }
+
+        // 规则（用户 2026-11-25）：退出后这台机器不能再显示该账号的壁纸。
+        isSwitchingLibrary = true
+        let msg = LibraryOwner.restoreAnonymous()
+        SyncEngine.log(Source.support, "退出登录：\(msg)")
+        isSwitchingLibrary = false
+        NotificationCenter.default.post(name: SyncCenter.libraryDidChange, object: nil)
+
         AccountStore.clear()
         session = nil
         profile = nil
@@ -161,7 +191,7 @@ final class SyncCenter {
 
     /// 库目录变化后的防抖同步
     func scheduleSync() {
-        guard isLoggedIn else { return }
+        guard isLoggedIn, !isSwitchingLibrary else { return }
         pending?.cancel()
         let w = DispatchWorkItem { [weak self] in self?.syncNow() }
         pending = w
@@ -169,7 +199,7 @@ final class SyncCenter {
     }
 
     func syncNow() {
-        guard let s = session else { return }
+        guard let s = session, !isSwitchingLibrary else { return }
         guard !status.isBusy else { return }
         status = .syncing("正在同步…")
 

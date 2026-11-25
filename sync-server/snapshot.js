@@ -22,8 +22,8 @@ const storage = require("./storage");
 const PREFIX = "sync-snapshots/";
 const SNAPSHOT_ENDPOINT = "/api/sync-storage/snapshot";
 
-const INTERVAL_MIN = Number(process.env.DONG_SNAPSHOT_INTERVAL_MIN || 10);
-const KEEP = Number(process.env.DONG_SNAPSHOT_KEEP || 12);
+const INTERVAL_MIN = Number(process.env.DONG_SNAPSHOT_INTERVAL_MIN || 5);
+const KEEP = Number(process.env.DONG_SNAPSHOT_KEEP || 40);
 const ENABLED = (() => {
   const v = process.env.DONG_SNAPSHOT;
   if (v === "0") return false;
@@ -36,6 +36,7 @@ let dataDir = ".";
 let dirty = false;
 let timer = null;
 let lastResult = { at: 0, ok: null, key: "", error: "" };
+let lastRestore = { at: 0, restored: false, reason: "", files: 0 };
 
 function init(dir) {
   dataDir = dir;
@@ -47,7 +48,8 @@ function status() {
     intervalMin: INTERVAL_MIN,
     keep: KEEP,
     dirty,
-    last: lastResult,
+    lastPush: lastResult,
+    lastRestore,
   };
 }
 
@@ -165,10 +167,16 @@ async function restoreIfNeeded() {
   if (!ENABLED) return { restored: false, reason: "未启用" };
   const accountsFile = path.join(dataDir, "accounts.json");
   const exists = await fsp.access(accountsFile).then(() => true).catch(() => false);
-  if (exists) return { restored: false, reason: "本地已有数据" };
+  if (exists) {
+    lastRestore = { at: Date.now(), restored: false, reason: "本地已有数据", files: 0 };
+    return { restored: false, reason: "本地已有数据" };
+  }
 
   const key = await latestKey().catch(() => null);
-  if (!key) return { restored: false, reason: "云端没有快照" };
+  if (!key) {
+    lastRestore = { at: Date.now(), restored: false, reason: "云端没有快照", files: 0 };
+    return { restored: false, reason: "云端没有快照" };
+  }
 
   const buf = await fetchSnapshot(key);
   if (!buf) {
@@ -180,6 +188,7 @@ async function restoreIfNeeded() {
   try {
     const n = await unpack(buf);
     console.log(`[dong-sync] 已从快照恢复 ${n} 个文件（${key}）`);
+    lastRestore = { at: Date.now(), restored: true, reason: "", files: n };
     return { restored: true, files: n, key };
   } catch (e) {
     const msg = `快照解包失败：${String(e.message || e)}`;
@@ -191,9 +200,9 @@ async function restoreIfNeeded() {
 
 // ── 调度 ───────────────────────────────────────────────────
 
-/** 写操作后调用：只标脏，真正上传交给定时器 */
+/** 写操作后调用：2 秒后推一次（合并突发写），另有 5 分钟安全网 */
 function markDirty() {
-  dirty = true;
+  markDirtySoon();
 }
 
 /**
@@ -207,7 +216,7 @@ function markDirtySoon() {
   soonTimer = setTimeout(() => {
     soonTimer = null;
     push().catch(() => {});
-  }, 3000);
+  }, 2000);
   soonTimer.unref?.();
 }
 

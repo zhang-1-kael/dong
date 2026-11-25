@@ -204,6 +204,8 @@ async function handle(req, res) {
       time: Date.now(),
       storage: gatewayHealth.mode,
       snapshot: snapshot.status().enabled ? "on" : "off",
+      // 排障用：远程就能看出快照到底推没推、恢复有没有跑
+      snapDetail: snapshot.status(),
       ...(healthy ? {} : { error: gatewayHealth.error }),
     });
   }

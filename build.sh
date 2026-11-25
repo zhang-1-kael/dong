@@ -9,8 +9,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/bin"
 
 echo "==> 编译 Swift"
 swiftc -O -o "$APP/Contents/MacOS/VideoWallpaper" \
-  main.swift Downloader.swift DouyinWebFetcher.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift Tuning.swift \
-  -framework Cocoa -framework AVFoundation -framework WebKit
+  main.swift Downloader.swift DouyinWebFetcher.swift LockScreen.swift Transcoder.swift LibraryWindow.swift Panel.swift Presets.swift Analytics.swift Updater.swift FrameHealth.swift Tuning.swift PerfectLoopInstaller.swift PlaybackPolicy.swift WebWallpaper.swift Rotation.swift Account.swift SyncEngine.swift SyncCenter.swift AccountPopover.swift DynamicLockScreen.swift LibraryOwner.swift \
+  -framework Cocoa -framework AVFoundation -framework WebKit -framework Security
 
 echo "==> 组装 App Bundle"
 cp Info.plist "$APP/Contents/Info.plist"
@@ -91,10 +91,31 @@ else
   echo "!! icons/ 是空的：菜单栏和徽章会退回静态图标"
 fi
 
+# 锁屏动态壁纸扩展（.appex）。
+# 它只负责锁屏那一层：PlaybackPolicy 里 alwaysPauseDesktop = true 时桌面暂停、
+# 只在 presentionMode == locked 渲染，所以和主程序的桌面自绘窗口可以共存。
+# 排查构建问题时用 VW_NO_LOCKSCREEN=1 跳过。
+if [ -z "$VW_NO_LOCKSCREEN" ]; then
+  echo "==> 编译锁屏扩展"
+  zsh build_ext.sh --build >/dev/null
+  mkdir -p "$APP/Contents/Extensions"
+  rm -rf "$APP/Contents/Extensions/DongLockScreen.appex"
+  cp -R build/DongLockScreen.appex "$APP/Contents/Extensions/"
+  echo "==> 内置锁屏扩展（$(du -sh build/DongLockScreen.appex | cut -f1)）"
+else
+  echo "==> 跳过锁屏扩展（VW_NO_LOCKSCREEN=1）"
+fi
+
 # 本地开发用 ad-hoc 签名：只能自己这台机器跑。
 # 要分发给别人（过 Gatekeeper）请勿改这里，改用：
 #   VW_SIGN_ID="Developer ID Application: 名字 (TEAMID)" ./sign-notarize.sh
 echo "==> 本地签名（ad-hoc，仅供本机测试）"
-codesign --force --deep --sign - "$APP"
+# 先签内层扩展（它需要沙盒 entitlement），再签外层 App，顺序不能反。
+if [ -d "$APP/Contents/Extensions/DongLockScreen.appex" ]; then
+  codesign --force --sign - --options runtime \
+    --entitlements build/DongLockScreen.entitlements \
+    "$APP/Contents/Extensions/DongLockScreen.appex"
+fi
+codesign --force --sign - "$APP"
 
 echo "==> 完成: $APP"
