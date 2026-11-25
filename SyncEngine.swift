@@ -303,15 +303,15 @@ enum SyncEngine {
         let bytesTotal = actions.reduce(Int64(0)) { $0 + sizeOf($1) }
         var bytesDone: Int64 = 0
 
-        func emit(_ text: String) {
+        func emit(_ text: String, extra: Int64 = 0) {
             var p = Progress()
             p.text = text
             p.done = step
             p.total = total
-            p.bytesDone = bytesDone
+            p.bytesDone = bytesDone + extra
             p.bytesTotal = bytesTotal
             p.fraction = bytesTotal > 0
-                ? min(1, Double(bytesDone) / Double(bytesTotal))
+                ? min(1, Double(bytesDone + extra) / Double(bytesTotal))
                 : (total > 0 ? Double(step) / Double(total) : 0)
             progress?(p)
         }
@@ -334,7 +334,18 @@ enum SyncEngine {
             switch a {
             case let .upload(item):
                 guard let file = item.file else { break }
-                switch AccountAPI.upload(token: session.token, id: item.id, file: file) {
+                let emitLock = NSLock()
+                var lastPercent = -1
+                switch AccountAPI.upload(token: session.token, id: item.id, file: file,
+                                         onProgress: { sent, _ in
+                    // 每涨 1% 才刷一次界面
+                    emitLock.lock()
+                    let pct = Int(Double(sent) / Double(max(item.bytes, 1)) * 100)
+                    let should = pct > lastPercent
+                    if should { lastPercent = pct }
+                    emitLock.unlock()
+                    if should { emit(label, extra: sent) }
+                }) {
                 case .success:
                     report.uploaded += 1
                     // 立刻记账：下一步如果断电/被杀，这张不用重传

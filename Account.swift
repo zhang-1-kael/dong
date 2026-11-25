@@ -310,7 +310,11 @@ enum AccountAPI {
 
     // MARK: 文件
 
-    static func upload(token: String, id: String, file: URL) -> Result<String, AccountError> {
+    /// 上传进度回调：(已发送字节, 总字节)
+    typealias UploadProgress = (Int64, Int64) -> Void
+
+    static func upload(token: String, id: String, file: URL,
+                       onProgress: UploadProgress? = nil) -> Result<String, AccountError> {
         guard let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int64 else {
             return .failure(.network("读不到文件"))
         }
@@ -318,24 +322,33 @@ enum AccountAPI {
                           headers: ["content-type": "application/octet-stream",
                                     "x-content-length": String(size)])
         req.timeoutInterval = 3600
-        let sem = DispatchSemaphore(value: 0)
-        var result: Result<String, AccountError> = .failure(.network("未开始"))
-        session.uploadTask(with: req, fromFile: file) { data, resp, err in
-            defer { sem.signal() }
-            if let err {
-                result = .failure(.network(err.localizedDescription))
-                return
-            }
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            let d = data ?? Data()
-            guard (200..<300).contains(code) else {
-                result = .failure(.http(code, (json(d)["error"] as? String) ?? "上传失败"))
-                return
-            }
-            result = .success((json(d)["sha256"] as? String) ?? "")
-        }.resume()
-        sem.wait()
-        return result
+
+        // 用带 delegate 的会话才能拿到「已发送多少字节」——不然一张 300MB 的壁纸
+        // 传十分钟，界面上一直是 0%，用户会以为卡死。
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 60
+        cfg.timeoutIntervalForResource = 3600
+        let sink = UploadSink(expected: size, onProgress: onProgress)
+        let session = URLSession(configuration: cfg, delegate: sink, delegateQueue: nil)
+        let task = session.uploadTask(with: req, fromFile: file)
+        sink.bind(task)
+        task.resume()
+
+        if !sink.wait() {
+            session.invalidateAndCancel()
+            return .failure(.network("上传超时，网络好像卡住了"))
+        }
+        session.finishTasksAndInvalidate()
+
+        if let err = sink.error {
+            return .failure(.network(err.localizedDescription))
+        }
+        let code = sink.status
+        let data = sink.payload
+        guard (200..<300).contains(code) else {
+            return .failure(.http(code, (json(data)["error"] as? String) ?? "上传失败"))
+        }
+        return .success((json(data)["sha256"] as? String) ?? "")
     }
 
     static func download(token: String, id: String, to: URL) -> Result<Void, AccountError> {
@@ -370,6 +383,76 @@ enum AccountAPI {
 
     static func deleteAsset(token: String, id: String) {
         _ = send(request("/api/sync/asset/\(id)", method: "DELETE", token: token))
+    }
+}
+
+/// 上传用的 URLSession delegate：报进度 + 长时间没动静就掐掉。
+/// 平台侧偶尔会把连接挂住，如果不管，界面上就是「一直 0%」，等一小时也不会自己好。
+private final class UploadSink: NSObject, URLSessionDataDelegate {
+    private let expected: Int64
+    private let onProgress: AccountAPI.UploadProgress?
+    private let sem = DispatchSemaphore(value: 0)
+    private var task: URLSessionUploadTask?
+    private var lastActive = Date()
+    private var watchdog: DispatchSourceTimer?
+    private let lock = NSLock()
+
+    private(set) var payload = Data()
+    private(set) var status = 0
+    private(set) var error: Error?
+
+    /// 多少秒没有任何字节推进就判定卡住
+    private let stallSeconds: TimeInterval = 120
+
+    init(expected: Int64, onProgress: AccountAPI.UploadProgress?) {
+        self.expected = expected
+        self.onProgress = onProgress
+        super.init()
+        let t = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        t.schedule(deadline: .now() + stallSeconds, repeating: 10)
+        t.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            let idle = Date().timeIntervalSince(self.lastActive)
+            self.lock.unlock()
+            if idle >= self.stallSeconds {
+                self.error = NSError(domain: "Dong", code: -1001,
+                                     userInfo: [NSLocalizedDescriptionKey: "上传卡住了，已中断并会重试"])
+                self.task?.cancel()
+            }
+        }
+        t.resume()
+        watchdog = t
+    }
+
+    func bind(_ t: URLSessionUploadTask) {
+        lock.lock(); task = t; lock.unlock()
+    }
+
+    func wait() -> Bool {
+        let r = sem.wait(timeout: .now() + 3600)
+        watchdog?.cancel()
+        watchdog = nil
+        return r == .success
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didSendBodyData bytesSent: Int64,
+                    totalBytesSent: Int64,
+                    totalBytesExpectedToSend: Int64) {
+        lock.lock(); lastActive = Date(); lock.unlock()
+        let total = totalBytesExpectedToSend > 0 ? totalBytesExpectedToSend : expected
+        onProgress?(totalBytesSent, total)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock(); payload.append(data); lock.unlock()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if self.error == nil { self.error = error }
+        status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
+        sem.signal()
     }
 }
 
