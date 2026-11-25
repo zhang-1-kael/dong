@@ -117,6 +117,11 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 | POST | `/api/auth/register` | `{email,password}` → `{token,...}` |
 | POST | `/api/auth/login` | 同上 |
 | POST | `/api/auth/logout` | 作废当前 token |
+| GET | `/api/auth/profile` | 昵称 / 是否设置过头像 |
+| PUT | `/api/auth/profile` | 改昵称 `{displayName}`（≤20 字） |
+| GET | `/api/auth/avatar` | 取头像（gateway 下 302 到签名直链） |
+| PUT | `/api/auth/avatar` | 上传头像（PNG ≤512KB，客户端已裁成 256×256） |
+| DELETE | `/api/auth/avatar` | 移除头像 |
 | POST | `/api/auth/password` | 改密码 `{oldPassword,newPassword}`；成功后作废其它设备令牌，当前设备保留 |
 | GET | `/api/me` | 邮箱、配额、已用字节 |
 | GET | `/api/sync/manifest` | 清单（含 `rev`） |

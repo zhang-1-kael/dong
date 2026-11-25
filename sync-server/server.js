@@ -26,6 +26,8 @@ const PORT = Number(process.env.SYNC_PORT || process.env.PORT || 8787);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const QUOTA_BYTES = Number(process.env.DONG_QUOTA_GB || 2) * 1024 ** 3;
 const MAX_ASSET = Number(process.env.DONG_MAX_ASSET_MB || 512) * 1024 ** 2;
+/// 头像借用同一套存储，固定用这个 assetId，避免和壁纸混在一起
+const AVATAR_ID = "__avatar__";
 const TOKEN_DAYS = Number(process.env.DONG_TOKEN_DAYS || 60);
 
 // 简易限流：key = 客户端 IP，滑动窗口计数。托管平台没有 Nginx，只能自己兜一层。
@@ -320,6 +322,77 @@ async function handle(req, res) {
     const used = await usedBytes(user.id);
     const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
     return send(res, 200, { email, userId: user.id, quotaBytes: user.quotaBytes, usedBytes: used });
+  }
+
+  // ---- 个人资料（昵称 / 头像） ----
+  // 放在 /api/auth/ 下面是有意的：反代已经转发这个前缀，不用为它再加路由。
+  // 单独开 /api/profile 会被官网自己的 404 页面吃掉（实测）。
+  if (p === "/api/auth/profile" && method === "GET") {
+    const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
+    const hit = await storage.locate(user.id, AVATAR_ID).catch(() => null);
+    return send(res, 200, {
+      email,
+      displayName: user.displayName || "",
+      hasAvatar: !!hit,
+    });
+  }
+
+  if (p === "/api/auth/profile" && method === "PUT") {
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      return fail(res, 400, "请求格式不对");
+    }
+    const name = String(body.displayName || "").trim();
+    if (name.length > 20) return fail(res, 400, "名字最多 20 个字");
+    user.displayName = name;
+    const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
+    if (email) accounts[email] = user;
+    await writeJson(F.accounts, accounts);
+    snapshot.markDirty();
+    return send(res, 200, { ok: true, displayName: name });
+  }
+
+  // 头像：取（gateway 302 到签名直链，disk 直接回文件）
+  if (p === "/api/auth/avatar" && method === "GET") {
+    const hit = await storage.locate(user.id, AVATAR_ID).catch(() => null);
+    if (!hit) return fail(res, 404, "没有头像");
+    if (hit.kind === "url") {
+      return send(res, 302, Buffer.alloc(0), { location: hit.url, "cache-control": "no-store" });
+    }
+    try {
+      const st = await fsp.stat(hit.file);
+      res.writeHead(200, {
+        "content-type": "image/png",
+        "content-length": st.size,
+        "cache-control": "no-store",
+      });
+      fs.createReadStream(hit.file).pipe(res);
+      return;
+    } catch {
+      return fail(res, 404, "没有头像");
+    }
+  }
+
+  // 头像：上传（客户端已缩到 256×256 PNG，这里再兜一道 512KB 上限）
+  if (p === "/api/auth/avatar" && method === "PUT") {
+    const size = Number(req.headers["content-length"] || 0);
+    if (size > 512 * 1024) return fail(res, 413, "头像太大了");
+    try {
+      await storage.put(user.id, AVATAR_ID, req);
+      snapshot.markDirty();
+      return send(res, 200, { ok: true });
+    } catch (e) {
+      console.error("[dong-sync] avatar put failed", String(e.message || e));
+      return fail(res, 502, "头像保存失败，请重试");
+    }
+  }
+
+  if (p === "/api/auth/avatar" && method === "DELETE") {
+    await storage.del(user.id, AVATAR_ID);
+    snapshot.markDirty();
+    return send(res, 200, { ok: true });
   }
 
   if (p === "/api/sync/manifest" && method === "GET") {
