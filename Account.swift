@@ -402,7 +402,9 @@ private final class UploadSink: NSObject, URLSessionDataDelegate {
     private(set) var error: Error?
 
     /// 多少秒没有任何字节推进就判定卡住
-    private let stallSeconds: TimeInterval = 120
+    // 慢链路 + 平台代理缓冲时，进度回调之间可能出现较长空档；
+    // 120 秒太激进（实测把正常上传掐了两次），放宽到 5 分钟。
+    private let stallSeconds: TimeInterval = 300
 
     init(expected: Int64, onProgress: AccountAPI.UploadProgress?) {
         self.expected = expected

@@ -290,7 +290,11 @@ enum SyncEngine {
         // 上传失败要重试一次：清单里先不写它，免得下次以为已同步
         var failedIds = Set<String>()
 
-        let total = actions.count
+        // 进度要按「整个库」显示：已经同步过的也算进去，
+        // 否则用户看到「第 3/8 张」会以为库里只有 8 张（其实 21 张，13 张早传完了）。
+        let pendingCount = actions.count
+        let total = local.count
+        let alreadyDone = max(0, total - pendingCount)
         var step = 0
         // 总字节：上传按文件大小，下载按清单里记的大小
         func sizeOf(_ a: Action) -> Int64 {
@@ -300,13 +304,16 @@ enum SyncEngine {
             default: return 0
             }
         }
-        let bytesTotal = actions.reduce(Int64(0)) { $0 + sizeOf($1) }
-        var bytesDone: Int64 = 0
+        let pendingBytes = actions.reduce(Int64(0)) { $0 + sizeOf($1) }
+        let libraryBytes = local.reduce(Int64(0)) { $0 + $1.bytes }
+        // 总数取「整库字节」，已传的部分算进进度；下载类动作不占库字节，退回待处理字节
+        let bytesTotal = max(pendingBytes, libraryBytes)
+        var bytesDone: Int64 = max(0, bytesTotal - pendingBytes)
 
         func emit(_ text: String, extra: Int64 = 0) {
             var p = Progress()
             p.text = text
-            p.done = step
+            p.done = alreadyDone + step
             p.total = total
             p.bytesDone = bytesDone + extra
             p.bytesTotal = bytesTotal
@@ -316,7 +323,7 @@ enum SyncEngine {
             progress?(p)
         }
 
-        log(support, "开始同步：本地 \(local.count) 张，待处理动作 \(total) 个，合计 \(bytesTotal / 1024 / 1024)MB，rev \(remote.rev)")
+        log(support, "开始同步：本地 \(local.count) 张，已同步 \(alreadyDone) 张，待处理 \(pendingCount) 个，整库 \(bytesTotal / 1024 / 1024)MB，rev \(remote.rev)")
         emit("正在准备…")
 
         for a in actions {
@@ -336,7 +343,9 @@ enum SyncEngine {
                 guard let file = item.file else { break }
                 let emitLock = NSLock()
                 var lastPercent = -1
-                switch AccountAPI.upload(token: session.token, id: item.id, file: file,
+                var uploadResult: Result<String, AccountError> = .failure(.network("未开始"))
+                for attempt in 1...2 {
+                uploadResult = AccountAPI.upload(token: session.token, id: item.id, file: file,
                                          onProgress: { sent, _ in
                     // 每涨 1% 才刷一次界面
                     emitLock.lock()
@@ -345,7 +354,16 @@ enum SyncEngine {
                     if should { lastPercent = pct }
                     emitLock.unlock()
                     if should { emit(label, extra: sent) }
-                }) {
+                })
+                if case .success = uploadResult { break }
+                if attempt == 1 {
+                    if case let .failure(e) = uploadResult {
+                        log(support, "上传重试 \(item.id)：\(e.localizedDescription)")
+                    }
+                    emit(label + "（重试中）", extra: 0)
+                }
+                }
+                switch uploadResult {
                 case .success:
                     report.uploaded += 1
                     // 立刻记账：下一步如果断电/被杀，这张不用重传
