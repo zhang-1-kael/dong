@@ -107,21 +107,23 @@ enum SyncEngine {
         }
     }
 
-    static func stateFile(_ support: URL) -> URL {
-        support.appendingPathComponent("sync-state.json")
+    /// 同步状态按账号分开存：切账号时不能沿用上一个账号的 rev / 条目，
+    /// 否则会把别人的壁纸当成「本地已删除」写成墓碑。
+    static func stateFile(_ support: URL, key: String = "anonymous") -> URL {
+        support.appendingPathComponent("sync-state-\(key).json")
     }
 
-    static func loadState(_ support: URL) -> SyncState {
-        guard let d = try? Data(contentsOf: stateFile(support)),
+    static func loadState(_ support: URL, key: String = "anonymous") -> SyncState {
+        guard let d = try? Data(contentsOf: stateFile(support, key: key)),
               let s = try? JSONDecoder().decode(SyncState.self, from: d) else { return SyncState() }
         return s
     }
 
-    static func saveState(_ support: URL, _ s: SyncState) {
+    static func saveState(_ support: URL, _ s: SyncState, key: String = "anonymous") {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let d = try? enc.encode(s) {
-            try? d.write(to: stateFile(support), options: .atomic)
+            try? d.write(to: stateFile(support, key: key), options: .atomic)
         }
     }
 
@@ -270,11 +272,12 @@ enum SyncEngine {
     static func run(session: AccountSession,
                     libraryDir: URL,
                     support: URL,
+                    stateKey: String = "anonymous",
                     webStreams: [(id: String, name: String, url: String, addedAt: Date)],
                     addWebStream: (String, String, String) -> Void,
                     removeWebStream: (String) -> Void,
                     progress: ((Progress) -> Void)? = nil) -> Result<Report, AccountError> {
-        var state = loadState(support)
+        var state = loadState(support, key: stateKey)
         var report = Report()
 
         let knownBefore = Set(state.items.keys)
@@ -385,7 +388,7 @@ enum SyncEngine {
                     // 立刻记账：下一步如果断电/被杀，这张不用重传
                     if state.synced == nil { state.synced = [:] }
                     state.synced?[item.id] = item.sha256
-                    saveState(support, state)
+                    saveState(support, state, key: stateKey)
                     uploadedItems.append(RemoteItem(id: item.id, name: item.name, kind: item.kind,
                                                     bytes: item.bytes, sha256: item.sha256,
                                                     updatedAt: item.updatedAt, webURL: item.webURL,
@@ -440,7 +443,7 @@ enum SyncEngine {
             state.rev = rev
             state.items = Dictionary(uniqueKeysWithValues: finalItems.filter { !$0.isDeleted }.map { ($0.id, $0.sha256) })
             state.synced = [:]      // 清单已落地，待传记录作废
-            saveState(support, state)
+            saveState(support, state, key: stateKey)
         case let .failure(e):
             report.errors.append("清单没写上去：\(e.localizedDescription)")
         }

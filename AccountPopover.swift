@@ -1223,7 +1223,13 @@ final class AccountViewController: NSViewController {
         a.addButton(withTitle: "退出登录")
         a.addButton(withTitle: "取消")
         guard a.runModal() == .alertFirstButtonReturn else { return }
-        SyncCenter.shared.signOut()
+        let note = SyncCenter.shared.signOut()
         applyState()
+        if note.contains("没传完") {
+            let b = NSAlert()
+            b.messageText = "已退出登录"
+            b.informativeText = note
+            b.runModal()
+        }
     }
 }

@@ -53,16 +53,25 @@ enum LibraryOwner {
         let prev = current
         guard prev != accountId else { return "已在用这个账号的库" }
 
-        if remoteIsEmpty {
-            // 并进去：不动文件，只改归属
+        // 特例：从「未登录」直接进一个空账号 = 新用户注册。
+        // 这时本地壁纸应该**并进账号**，而不是收起来（收起来就变成空账号，违背需求）。
+        if remoteIsEmpty && prev == anonymous {
             setCurrent(accountId)
-            return "账号为空，已把本地 \(count()) 张并入这个账号"
+            return "新账号：已把本地 \(count()) 张并入这个账号，随后上传"
         }
 
-        let moved = move(Source.libraryDir, to: cacheDir(prev))
+        // 其余情况：先把当前库收起，再把该账号上次退出时暂存的库换回来。
+        // 无论账号在云端是空是满，都要换——否则「账号空了/没传完就退出」时，
+        // 暂存在 cache 里的壁纸永远回不来（用户看到的是空库）。
+        let stashed = move(Source.libraryDir, to: cacheDir(prev))
         let restored = move(cacheDir(accountId), to: Source.libraryDir)
         setCurrent(accountId)
-        return "已切换：收起 \(moved) 张，换出这个账号的 \(restored) 张"
+
+        if remoteIsEmpty {
+            // 账号是空的：现在活动库里的东西就属于这个账号，随后同步会上传
+            return "账号为空：收起 \(stashed) 张，换回该账号暂存的 \(restored) 张，准备上传"
+        }
+        return "已切换：收起 \(stashed) 张，换出这个账号的 \(restored) 张"
     }
 
     /// 退出登录：把账号的壁纸移出活动库，再还原登录前的匿名库。

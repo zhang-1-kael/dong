@@ -132,10 +132,19 @@ final class SyncCenter {
         }
     }
 
-    func signOut() {
+    /// 退出登录。返回一句给用户看的话（有未传完的会提示）。
+    @discardableResult
+    func signOut() -> String {
         if let s = session { AccountAPI.logout(token: s.token) }
 
-        // 规则（用户 2026-11-25）：退出后这台机器不能再显示该账号的壁纸。
+        // 规则（用户 2026-11-25）：退出后这台机器不能再显示该账号的壁纸，
+        // 但**绝不能删文件**——没传完的也要留着，下次登录继续。
+        let owner = LibraryOwner.current
+        let localCount = (try? FileManager.default.contentsOfDirectory(
+            at: Source.libraryDir, includingPropertiesForKeys: nil))?.count ?? 0
+        let synced = SyncEngine.loadState(Source.support, key: owner).items.count
+        let pending = max(0, localCount - synced)
+
         isSwitchingLibrary = true
         let msg = LibraryOwner.restoreAnonymous()
         SyncEngine.log(Source.support, "退出登录：\(msg)")
@@ -149,6 +158,11 @@ final class SyncCenter {
         status = .signedOut
         watcher?.cancel()
         watcher = nil
+
+        if pending > 0 {
+            return msg + "\n还有 \(pending) 张没传完，已保存在本机，下次登录会接着传。"
+        }
+        return msg
     }
 
     func refreshAccount(_ done: @escaping (Result<AccountAPI.Me, AccountError>) -> Void) {
@@ -214,6 +228,7 @@ final class SyncCenter {
                 session: s,
                 libraryDir: lib,
                 support: support,
+                stateKey: LibraryOwner.current,
                 webStreams: streams,
                 addWebStream: { id, name, url in
                     var list = WebStreams.load()
