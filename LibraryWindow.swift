@@ -12,6 +12,9 @@ protocol WallpaperLibraryDelegate: AnyObject {
     func libraryDelete(index: Int)
     /// 壁纸库内长按拖动重排：from/to 都是「移除源之后的插入位置」
     func libraryMove(from: Int, to: Int)
+    /// 重命名第 index 张壁纸（只改文件名主体，扩展名由 App 侧保留）。
+    /// 返回 false 表示名字不合法 / 重名 / 写入失败，卡片会留在编辑态让用户改。
+    func libraryRename(index: Int, to name: String) -> Bool
     func libraryAdd(urls: [URL])
     func libraryAddLink()
     /// 直接拿一条已经确认过的链接去下载
@@ -23,6 +26,8 @@ protocol WallpaperLibraryDelegate: AnyObject {
     func librarySetEnabled(_ on: Bool)
     func libraryIsLockSync() -> Bool
     func librarySetLockSync(_ on: Bool)
+    /// 锁屏动态播放（需要用户在系统设置里选一次壁纸）
+    func librarySetDynamicLock(_ on: Bool)
     func libraryIsAutostart() -> Bool
     func librarySetAutostart(_ on: Bool)
 }
@@ -75,6 +80,12 @@ enum GalleryThumb {
 
     /// 视频宽高比 / 时长（主线程同步读本地文件，够快，只算一次）
     static func info(for url: URL) -> Info {
+        // 网页壁纸没有视频轨可读，直接给固定值，别拿 dongweb:// 去碰 AVURLAsset
+        if !url.isFileURL {
+            let info = Info(aspect: 16.0 / 9.0, duration: 0, pixel: "网页", fps: 0)
+            infoCache[url.path] = info
+            return info
+        }
         let key = url.path
         if let hit = infoCache[key] { return hit }
         let asset = AVURLAsset(url: url)
@@ -101,6 +112,8 @@ enum GalleryThumb {
 
     /// 只要已经在磁盘上的封面，不做后台生成（面板弹出必须即时）
     static func cached(for video: URL) -> NSImage? {
+        // 网页壁纸：统一地球图标
+        if !video.isFileURL { return WebThumb.icon() }
         let key = video.path
         cacheLock.lock()
         let hit = memory[key]
@@ -113,6 +126,8 @@ enum GalleryThumb {
 
     /// 有缓存立刻给，没有就后台抽帧，回来再补图（不卡窗口）
     static func load(for video: URL, completion: @escaping (NSImage?) -> Void) {
+        // 网页壁纸：统一地球图标（同步给，没得抽帧）
+        if !video.isFileURL { completion(WebThumb.icon()); return }
         let key = video.path
         cacheLock.lock()
         let hit = memory[key]
@@ -133,6 +148,15 @@ enum GalleryThumb {
             }
             DispatchQueue.main.async { completion(img) }
         }
+    }
+
+    /// 改名后清掉旧路径的内存缓存（磁盘上的 jpg 由调用方一起搬走）
+    static func forget(_ video: URL) {
+        let key = video.path
+        cacheLock.lock()
+        memory[key] = nil
+        infoCache[key] = nil
+        cacheLock.unlock()
     }
 
     /// 取时长的 35% 处那一帧（避开片头转场），存成 jpg
@@ -293,6 +317,11 @@ final class WallpaperCard: NSView {
     private let metaLabel = NSTextField(labelWithString: "")
     private let deleteButton = NSButton()
     private let tuneButton = NSButton()
+    private let renameButton = NSButton()
+    private let renameField = NSTextField()
+    private var renaming = false
+    /// 提交新名字：返回 true 表示改名成功，false 就留在编辑态
+    var onCommitRename: ((String) -> Bool)?
     private let badge = NSView()
     private let badgeLabel = NSTextField(labelWithString: "正在使用")
 
@@ -372,6 +401,34 @@ final class WallpaperCard: NSView {
         tuneButton.action = #selector(tuneTapped)
         addSubview(tuneButton)
 
+        // 右上角下方：重命名。跟删除/微调同款小圆钮，悬停才出现
+        renameButton.isBordered = false
+        renameButton.wantsLayer = true
+        renameButton.layer?.cornerRadius = 11
+        renameButton.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.45).cgColor
+        renameButton.image = NSImage(systemSymbolName: "pencil",
+                                     accessibilityDescription: "重命名")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 9, weight: .bold))
+        renameButton.contentTintColor = .white
+        renameButton.isHidden = true
+        renameButton.target = self
+        renameButton.action = #selector(renameTapped)
+        addSubview(renameButton)
+
+        // 行内改名输入框：平时不挂，点铅笔才叠到名字位置上
+        renameField.isBordered = false
+        renameField.isBezeled = false
+        renameField.drawsBackground = true
+        renameField.backgroundColor = NSColor.black.withAlphaComponent(0.62)
+        renameField.textColor = .white
+        renameField.font = .systemFont(ofSize: 13, weight: .semibold)
+        renameField.focusRingType = .none
+        renameField.usesSingleLineMode = true
+        renameField.lineBreakMode = .byTruncatingTail
+        renameField.target = self
+        renameField.action = #selector(commitRename)
+        renameField.delegate = self
+
         // 左上角「正在使用」
         badge.wantsLayer = true
         badge.layer?.cornerRadius = 7
@@ -413,7 +470,14 @@ final class WallpaperCard: NSView {
         nameLabel.frame = NSRect(x: pad, y: pad + 15, width: max(0, w - pad * 2), height: 18)
         shade.frame = NSRect(x: 0, y: 0, width: w, height: min(h, 148))
         deleteButton.frame = NSRect(x: w - 30, y: h - 30, width: 22, height: 22)
+        renameButton.frame = NSRect(x: w - 30, y: h - 58, width: 22, height: 22)
         tuneButton.frame = NSRect(x: w - 30, y: 8, width: 22, height: 22)
+
+        if renaming {
+            // 输入框跟名字标签同一行、同一字号，视觉上就像直接在原地改字
+            renameField.frame = NSRect(x: pad - 4, y: nameLabel.frame.minY - 3,
+                                       width: max(60, w - pad * 2 + 8), height: 24)
+        }
 
         let bw = ceil(badgeLabel.intrinsicContentSize.width) + 18
         badge.frame = NSRect(x: 10, y: h - 30, width: bw, height: 20)
@@ -457,10 +521,13 @@ final class WallpaperCard: NSView {
         }
         deleteButton.isHidden = false
         tuneButton.isHidden = false
+        renameButton.isHidden = false
         thumbWrap.layer?.borderWidth = 1
         thumbWrap.layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
 
         if player == nil {
+            // 网页壁纸没有本地视频可预览，保持地球图标（避免 AVPlayer 吃 dongweb:// 报错）
+            guard url.isFileURL else { return }
             let item = AVPlayerItem(url: url)
             let p = AVQueuePlayer()
             p.isMuted = true
@@ -477,8 +544,9 @@ final class WallpaperCard: NSView {
     }
 
     private func endHover() {
-        // 拖动中途鼠标必然离开卡片，这时候别收悬停态：否则卡片会一边跟着手走一边变暗
-        guard hovered, !dragging else { return }
+        // 拖动中途鼠标必然离开卡片，这时候别收悬停态：否则卡片会一边跟着手走一边变暗。
+        // 改名时同理：不然输入框刚点开、鼠标一动名字就淡没了。
+        guard hovered, !dragging, !renaming else { return }
         hovered = false
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.14
@@ -488,6 +556,7 @@ final class WallpaperCard: NSView {
         }
         deleteButton.isHidden = true
         tuneButton.isHidden = true
+        renameButton.isHidden = true
         thumbWrap.layer?.borderWidth = 0
         stopPlayback()
     }
@@ -511,6 +580,7 @@ final class WallpaperCard: NSView {
         tuneButton.isHidden = false
         thumbWrap.layer?.borderWidth = 1
         thumbWrap.layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
+        guard url.isFileURL else { return }   // 网页壁纸没有可预览的视频
         let item = AVPlayerItem(url: url)
         let p = AVQueuePlayer()
         p.isMuted = true
@@ -537,6 +607,7 @@ final class WallpaperCard: NSView {
     func teardown() {
         pressTimer?.invalidate()
         pressTimer = nil
+        endRename()      // 正在改名就把输入框收掉，别留成孤儿视图
         endHover()
         stopPlayback()
     }
@@ -643,6 +714,9 @@ final class WallpaperCard: NSView {
         let apply = NSMenuItem(title: "设为壁纸", action: #selector(applyTapped), keyEquivalent: "")
         apply.target = self
         menu.addItem(apply)
+        let rename = NSMenuItem(title: "重命名…", action: #selector(renameTapped), keyEquivalent: "")
+        rename.target = self
+        menu.addItem(rename)
         let reveal = NSMenuItem(title: "在访达中显示", action: #selector(revealTapped), keyEquivalent: "")
         reveal.target = self
         menu.addItem(reveal)
@@ -659,6 +733,76 @@ final class WallpaperCard: NSView {
     /// 微调弹层的锚点：锚在按钮上，箭头正好指着它
     var tuneAnchor: NSView { tuneButton }
     @objc private func tuneTapped() { onTune?() }
+
+    // MARK: 重命名（行内编辑）
+
+    @objc private func renameTapped() {
+        beginRename()
+    }
+
+    /// 在名字那一行原地变成输入框，像访达里改名一样
+    func beginRename() {
+        guard !renaming else { return }
+        // 网页壁纸没有文件名可改
+        guard url.isFileURL else {
+            NSSound.beep()
+            return
+        }
+        renaming = true
+        hovered = true                       // 编辑期间保住悬停态（名字、按钮都别淡掉）
+        nameLabel.alphaValue = 1
+        shade.alphaValue = 1
+        renameField.stringValue = url.deletingPathExtension().lastPathComponent
+        thumbWrap.addSubview(renameField)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        window?.makeFirstResponder(renameField)
+        // 全选，直接打字就替换掉旧名字
+        if let editor = renameField.currentEditor() as? NSTextView {
+            editor.selectAll(nil)
+        }
+    }
+
+    @objc private func commitRename() {
+        let raw = renameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let old = url.deletingPathExtension().lastPathComponent
+        // 没改 / 改名后为空：当作取消，别弹错误
+        if raw.isEmpty || raw == old {
+            endRename()
+            return
+        }
+        if onCommitRename?(raw) == true {
+            endRename()
+        } else {
+            // 重名 / 非法字符 / 写入失败：留在编辑态，让用户改
+            NSSound.beep()
+            window?.makeFirstResponder(renameField)
+        }
+    }
+
+    func endRename() {
+        guard renaming else { return }
+        renaming = false
+        renameField.removeFromSuperview()
+        window?.makeFirstResponder(nil)
+        // 鼠标如果已经不在卡片上，正常收起悬停态
+        if let win = window {
+            let p = convert(win.mouseLocationOutsideOfEventStream, from: nil)
+            if !bounds.contains(p) { endHover() }
+        }
+    }
+}
+
+extension WallpaperCard: NSTextFieldDelegate {
+    /// ESC 退出编辑（回车由 action 走 commitRename）
+    func control(_ control: NSControl, textView: NSTextView,
+                 doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            endRename()
+            return true
+        }
+        return false
+    }
 }
 
 // MARK: - 瀑布流容器
@@ -711,6 +855,8 @@ final class GalleryView: NSView {
     var onDragStateChange: ((Bool) -> Void)?
     /// 长按重排落位：(原序号, 移除源之后的插入位置)
     var onMove: ((Int, Int) -> Void)?
+    /// 重命名：(序号, 新名字) → 是否成功
+    var onRename: ((Int, String) -> Bool)?
     private var accepts = false
 
     private var dragFrom = -1
@@ -852,7 +998,7 @@ final class GalleryView: NSView {
         let card = WallpaperCard(
             url: url,
             aspect: info.aspect,
-            name: url.deletingPathExtension().lastPathComponent,
+            name: WebStreams.displayName(for: url) ?? url.deletingPathExtension().lastPathComponent,
             meta: metaText(for: url, duration: info.duration))
 
         card.onApply = { [weak self, weak card] in
@@ -882,6 +1028,11 @@ final class GalleryView: NSView {
         card.onDragEnd = { [weak self] in
             self?.finishReorder()
         }
+        card.onCommitRename = { [weak self, weak card] name in
+            guard let self, let card,
+                  let i = self.cards.firstIndex(where: { $0 === card }) else { return false }
+            return self.onRename?(i, name) ?? false
+        }
         // 同一时刻只允许一张卡在悬停：鼠标移到别处时，把之前那张强行收回
         card.onHoverStart = { [weak self, weak card] in
             self?.clearHoverState(except: card)
@@ -890,6 +1041,8 @@ final class GalleryView: NSView {
     }
 
     private func metaText(for url: URL, duration: Double) -> String {
+        // 网页壁纸没有文件大小，直接报类型
+        guard url.isFileURL else { return "网页壁纸" }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let mb = String(format: "%.1f MB", Double(size) / 1_048_576)
         guard duration > 0.5 else { return mb }
@@ -1727,6 +1880,229 @@ final class SettingPill: NSView {
 
 // MARK: - 程序坞上方那枚名字气泡
 
+/// 设置弹层里的分组标题：整行可点，右侧一个箭头 + 状态摘要。
+/// 收起时只留这一行，点开才把下面的开关铺出来，免得弹层一路长到屏幕外。
+final class SettingsSectionHeader: NSView {
+    var onToggle: (() -> Void)?
+    private(set) var expanded = false
+
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let summaryLabel = NSTextField(labelWithString: "")
+    private let chevron = NSImageView()
+
+    init(title: String) {
+        super.init(frame: .zero)
+        wantsLayer = true
+
+        titleLabel.stringValue = title
+        titleLabel.font = .systemFont(ofSize: 12.5, weight: .semibold)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        summaryLabel.font = .systemFont(ofSize: 11)
+        summaryLabel.textColor = .secondaryLabelColor
+        summaryLabel.alignment = .right
+        summaryLabel.lineBreakMode = .byTruncatingTail
+        summaryLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        chevron.contentTintColor = .secondaryLabelColor
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.image = Self.chevronImage(expanded: false)
+
+        addSubview(titleLabel)
+        addSubview(summaryLabel)
+        addSubview(chevron)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 22),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            chevron.trailingAnchor.constraint(equalTo: trailingAnchor),
+            chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
+            chevron.widthAnchor.constraint(equalToConstant: 12),
+            summaryLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -6),
+            summaryLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            summaryLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor,
+                                                  constant: 8),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    private static func chevronImage(expanded: Bool) -> NSImage? {
+        NSImage(systemSymbolName: expanded ? "chevron.down" : "chevron.right",
+                accessibilityDescription: expanded ? "收起" : "展开")?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+    }
+
+    func update(summary: String, expanded: Bool) {
+        summaryLabel.stringValue = summary
+        summaryLabel.isHidden = summary.isEmpty
+        if self.expanded != expanded {
+            self.expanded = expanded
+            chevron.image = Self.chevronImage(expanded: expanded)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onToggle?()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+// MARK: - 「反馈」入口
+
+/// 设置弹层底部的「反馈」：平时只有两个字，鼠标压上去才浮出飞书群信息，
+/// 点一下直接唤起飞书进群。目的是"想反馈的人找得到，又不用在界面上摊一堆文字"。
+final class FeedbackLink: NSView {
+    /// 飞书群邀请链接（点「反馈」直接打开）
+    static let inviteURL = URL(string:
+        "https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=de4l4bc2-75cf-4d5e-b088-2c7ca62f1bee")!
+
+    var onOpen: (() -> Void)?
+    /// 卡片挂在哪个视图上（设置弹层传根视图；不传就退回窗口 contentView）
+    weak var tipHost: NSView?
+
+    private let label = NSTextField(labelWithString: "反馈")
+    private var tip: FeedbackTip?
+    private var tracking: NSTrackingArea?
+    private var hideWork: DispatchWorkItem?
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        label.font = .systemFont(ofSize: 11.5)
+        label.textColor = .secondaryLabelColor
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 18),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero,
+                               options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hideWork?.cancel()
+        hideWork = nil
+        label.textColor = .labelColor
+        showTip()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        label.textColor = .secondaryLabelColor
+        // 稍微留一点时间：鼠标从文字移到卡片上时不至于闪一下就没
+        let work = DispatchWorkItem { [weak self] in self?.hideTip() }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onOpen?()
+    }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    private func showTip() {
+        guard tip == nil, let host = tipHost ?? window?.contentView else { return }
+        let card = FeedbackTip()
+        card.frame.size = FeedbackTip.size
+        // 卡片浮在「反馈」上方，左右不越出弹层。
+        // 挂到弹层根视图而不是这一行：行高只有 18pt，卡片会被行裁掉。
+        let inHost = convert(bounds, to: host)
+        var x = inHost.midX - FeedbackTip.size.width / 2
+        x = min(max(x, 8), max(8, host.bounds.width - FeedbackTip.size.width - 8))
+        var y = inHost.maxY + 6
+        if y + FeedbackTip.size.height > host.bounds.height - 6 {
+            y = max(6, inHost.minY - FeedbackTip.size.height - 6)   // 上面放不下就翻到下面
+        }
+        card.frame.origin = NSPoint(x: x, y: y)
+        card.alphaValue = 0
+        host.addSubview(card)
+        tip = card
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            card.animator().alphaValue = 1
+        }
+    }
+
+    /// 调试用：不需要真实鼠标也能把卡片画出来核对版式
+    func debugShowTip() { showTip() }
+
+    private func hideTip() {
+        guard let card = tip else { return }
+        tip = nil
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.10
+            card.animator().alphaValue = 0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { card.removeFromSuperview() }
+    }
+}
+
+/// 「反馈」上方那张小卡片：标题 + 用途 + 链接。纯展示，点击由外面的文字负责。
+final class FeedbackTip: NSView {
+    static let size = NSSize(width: 238, height: 88)
+
+    init() {
+        super.init(frame: NSRect(origin: .zero, size: Self.size))
+        wantsLayer = true
+        layer?.cornerRadius = 9
+        layer?.masksToBounds = true
+        // 必须完全不透明：哪怕只留 4% 透过，底下的「自动暂停/自动轮换」标题
+        // 也会在卡片上显出灰影，跟卡片文字叠在一起显得脏
+        layer?.backgroundColor = NSColor(srgbRed: 0.10, green: 0.10, blue: 0.11, alpha: 1).cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        layer?.zPosition = 50
+
+        let title = NSTextField(labelWithString: "Dòng 用户反馈群")
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.textColor = .white
+
+        let sub = NSTextField(labelWithString: "飞书群 · 问题反馈与功能建议")
+        sub.font = .systemFont(ofSize: 10.5)
+        sub.textColor = NSColor.white.withAlphaComponent(0.78)
+
+        let link = NSTextField(labelWithString: "applink.feishu.cn/client/chat/…")
+        link.font = .systemFont(ofSize: 9.5)
+        link.textColor = NSColor.white.withAlphaComponent(0.5)
+        link.lineBreakMode = .byTruncatingTail
+
+        let hint = NSTextField(labelWithString: "点击「反馈」加入")
+        hint.font = .systemFont(ofSize: 10)
+        hint.textColor = Brand.accent
+
+        for (v, y) in [(title, 64.0), (sub, 46.0), (link, 28.0), (hint, 8.0)] {
+            v.frame = NSRect(x: 12, y: y, width: Self.size.width - 24, height: 15)
+            addSubview(v)
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// 让卡片自己不吃鼠标事件：悬停判定和点击都留在「反馈」两个字上，
+    /// 否则鼠标一移到卡片上就会触发 exited、卡片自己闪没
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// 鼠标压在磁贴上时浮出来的小标签，位置照着系统程序坞的标签做。
 final class DockTip: NSView {
     private let label = NSTextField(labelWithString: "")
@@ -2323,8 +2699,10 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let ink = Self.barInk
         transparencyIcon?.contentTintColor = ink
         barPct?.textColor = ink
-        for p in [enabledPill, lockPill, autoPill, addPill, folderPill,
-                  settingsPill, appearancePill] { p?.refreshAppearance() }
+        for p in [enabledPill, lockPill, autoPill, addPill, folderPill, settingsPill] {
+            p?.refreshAppearance()
+        }
+        avatarPill?.refreshAppearance(ink: ink)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -2425,17 +2803,21 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             self.toggleSettings(from: anchor)
         }
 
-        // 深浅色：壁纸库窗口外观手动切换。默认深色（照录屏定的），浅色给喜欢亮底的用户。
-        // 微调入口搬进了卡片右下角（悬停出现，就调那一张），底栏不再放「微调」磁贴。
-        let appearancePill = SettingPill(title: "深色", symbol: "mooncircle.fill", on: LibraryBackdrop.darkMode)
-        self.appearancePill = appearancePill
-        appearancePill.onText = "深色"
-        appearancePill.offText = "浅色"
-        appearancePill.onSymbol = "mooncircle.fill"
-        appearancePill.offSymbol = "sunmax.fill"
-        appearancePill.onToggle = { on in LibraryBackdrop.darkMode = on }
+        // 账号头像：底栏最右。没登录是个人形剪影，登录后变成邮箱首字母的橙色圆。
+        // 深浅色切换搬进了设置弹层（用户要求：这里留给个人信息）。
+        let avatarPill = AvatarPill()
+        self.avatarPill = avatarPill
+        avatarPill.onTap = { [weak self, weak avatarPill] in
+            guard let self, let anchor = avatarPill else { return }
+            self.toggleAccount(from: anchor)
+        }
 
-        for p in [enabledPill, lockPill, autoPill, addPill, folderPill, settingsPill, appearancePill] {
+        avatarPill.onHoverChange = { [weak self, weak avatarPill] on in
+            guard let self, let p = avatarPill else { return }
+            on ? self.showTip(text: "账号", anchor: p) : self.dockTip?.hide()
+        }
+
+        for p in [enabledPill, lockPill, autoPill, addPill, folderPill, settingsPill] {
             p.onHoverChange = { [weak self, weak p] on in
                 guard let self, let p else { return }
                 on ? self.showTip(for: p) : self.dockTip?.hide()
@@ -2493,7 +2875,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
         let pills = NSStackView(views: [transparencyRow, makeDivider(),
                                         enabledPill, lockPill, autoPill, divider,
-                                        addPill, folderPill, settingsPill, appearancePill])
+                                        addPill, folderPill, settingsPill, avatarPill])
         pills.orientation = .horizontal
         pills.spacing = 6
         pills.alignment = .centerY
@@ -2528,8 +2910,13 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         }
         gallery.onDelete = { [weak self] i in self?.delegate?.libraryDelete(index: i) }
         gallery.onMove = { [weak self] from, to in self?.delegate?.libraryMove(from: from, to: to) }
+        gallery.onRename = { [weak self] i, name in
+            self?.delegate?.libraryRename(index: i, to: name) ?? false
+        }
         gallery.onReveal = { [weak self] i in
             guard let self, let urls = self.delegate?.libraryVideos(), i < urls.count else { return }
+            // 网页壁纸没有真实文件可定位，跳过
+            guard urls[i].isFileURL else { return }
             NSWorkspace.shared.activateFileViewerSelecting([urls[i]])
         }
         // 整片壁纸库都能接收拖入的视频：落点不管在卡片上还是缝隙里都直接命中 gallery
@@ -2622,17 +3009,48 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var addPill: SettingPill?
     private var folderPill: SettingPill?
     private var settingsPill: SettingPill?
-    private var appearancePill: SettingPill?
+    private var avatarPill: AvatarPill?
+    private var settingsDarkSwitch: NSSwitch?
+    private var accountPop: NSPopover?
     /// 设置弹层（匿名统计开关 + 检查更新）
     private var settingsPop: NSPopover?
     /// 画面微调弹层
     private var tuningPop: NSPopover?
     private var tuneSpeedLabel: NSTextField?
+    /// 一键安装插件的进度/结果文字（装完即时刷新，不重启）
+    private var pluginInstallStatus: NSTextField?
+    private var pluginInstallButton: NSButton?
     private var settingsSwitch: NSSwitch?
+    /// 自动暂停三规则（设置弹层里）
+    private var pauseFullscreenSwitch: NSSwitch?
+    private var pauseLockSwitch: NSSwitch?
+    private var dynamicLockSwitch: NSSwitch?
+    private var pauseLowBatterySwitch: NSSwitch?
     private var settingsAction: NSButton?
     private var settingsStatus: NSTextField?
+    /// 设置弹层底部的「反馈」入口（调试渲染悬停态也要用到）
+    private var feedbackLink: FeedbackLink?
     private var settingsBlurPct: NSTextField?
     private var settingsBlurSlider: NSSlider?
+    /// 自动轮换的控件：总开关 / 方式 / 三个触发条件 / 定时间隔
+    private var rotateSwitch: NSSwitch?
+    private var rotateModePop: NSPopUpButton?
+    private var rotateLaunchSwitch: NSSwitch?
+    private var rotateUnlockSwitch: NSSwitch?
+    private var rotateWakeSwitch: NSSwitch?
+    private var rotateIntervalPop: NSPopUpButton?
+
+    // 可折叠区块：弹层太长时只留标题行
+    private var settingsVC: NSViewController?
+    private var settingsRoot: NSView?
+    private var settingsStack: NSStackView?
+    private var pauseHeader: SettingsSectionHeader?
+    private var rotateHeader: SettingsSectionHeader?
+    private var pauseSectionRows: [NSView] = []
+    private var rotateSectionRows: [NSView] = []
+    /// 默认都收起：需要时再展开
+    private var pauseExpanded = false
+    private var rotateExpanded = false
     /// 底栏常驻的「窗口透明度」：滑杆 + 百分比，和设置弹层里那个是同一份值
     private var barSlider: MiniSlider?
     private var barPct: NSTextField?
@@ -2659,10 +3077,32 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     // MARK: 设置弹层（匿名统计 + 更新）
 
     /// 调试用：把设置弹层那块内容画成 PNG（弹层是独立窗口，截不到，只能自己渲染）
+    /// 调试用：把整个壁纸库窗口拍成图（重点看底栏那颗头像）
+    func debugSnapshotWindow(to path: String) {
+        guard let v = window?.contentView else { return }
+        v.layoutSubtreeIfNeeded()
+        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        if let data = rep.representation(using: .png, properties: [:]) {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
+        print("[window] shot size=\(v.bounds.size)")
+    }
+
     func debugSnapshotSettings(to path: String) {
         let vc = makeSettingsController()
         guard let v = vc.view as NSView? else { return }
+        // VW_SETTINGS_EXPAND=1 先把两组都展开再截图，核对折叠前后高度
+        if ProcessInfo.processInfo.environment["VW_SETTINGS_EXPAND"] != nil {
+            toggleSettingsSection(.pause)
+            toggleSettingsSection(.rotate)
+        }
         v.layoutSubtreeIfNeeded()
+        // VW_FEEDBACK_TIP=1 直接把「反馈」的悬停卡片画出来核对版式
+        if ProcessInfo.processInfo.environment["VW_FEEDBACK_TIP"] != nil {
+            feedbackLink?.debugShowTip()
+            v.layoutSubtreeIfNeeded()
+        }
         guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
         v.cacheDisplay(in: v.bounds, to: rep)
         if let data = rep.representation(using: .png, properties: [:]) {
@@ -2840,15 +3280,25 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         stack.addArrangedSubview(caption("默认 1.00× · 整段循环 · \(fpsText) · \(loopText) · \(fadeText)"))
         if !pluginOn {
             stack.addArrangedSubview(caption(Transcoder.perfectLoopRecommendation, tint: .controlAccentColor))
-            // 唯一能点击的入口：打开插件下载/安装说明页（一键安装器在那页下载）
-            let getPlugin = NSButton(title: "下载并安装 PerfectLoop 插件 ↗",
-                                     target: self, action: #selector(tuneDownloadPluginTapped))
-            getPlugin.bezelStyle = .rounded
-            getPlugin.controlSize = .small
-            getPlugin.font = .systemFont(ofSize: 11.5, weight: .medium)
-            getPlugin.contentTintColor = .controlAccentColor
-            stack.addArrangedSubview(getPlugin)
-            getPlugin.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+            // 一键安装：点一下 App 自己下载/解压/装依赖/部署，装完立即生效，无需离开 App 或重启。
+            let installBtn = NSButton(title: "一键安装 PerfectLoop 插件",
+                                      target: self, action: #selector(tuneInstallPluginTapped))
+            installBtn.bezelStyle = .rounded
+            installBtn.controlSize = .small
+            installBtn.font = .systemFont(ofSize: 11.5, weight: .medium)
+            installBtn.contentTintColor = .controlAccentColor
+            installBtn.isEnabled = !PerfectLoopInstaller.shared.isInstalling
+            stack.addArrangedSubview(installBtn)
+            installBtn.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+            pluginInstallButton = installBtn
+            // 安装进度 / 结果（含占用说明）。装完即时刷新面板，不用重启。
+            let status = caption(Transcoder.perfectLoopInstallSteps)
+            status.font = .systemFont(ofSize: 10)
+            status.maximumNumberOfLines = 3
+            status.lineBreakMode = .byWordWrapping
+            status.preferredMaxLayoutWidth = width - 40
+            stack.addArrangedSubview(status)
+            pluginInstallStatus = status
         }
 
         vc.view = root
@@ -2883,10 +3333,28 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         tuningPop?.contentViewController = makeTuningController()
     }
 
-    /// 打开 PerfectLoop 插件的下载/安装说明页（一键安装器在那页下载）
-    @objc private func tuneDownloadPluginTapped() {
-        guard let url = URL(string: Transcoder.perfectLoopInstallURL) else { return }
-        NSWorkspace.shared.open(url)
+    /// 一键安装插件：App 内下载/解压/装依赖/部署，装完清缓存即时生效，无需离开 App 或重启。
+    @objc private func tuneInstallPluginTapped() {
+        pluginInstallButton?.isEnabled = false
+        pluginInstallStatus?.textColor = .secondaryLabelColor
+        PerfectLoopInstaller.shared.install(
+            progress: { [weak self] line in
+                self?.pluginInstallStatus?.stringValue = line
+            },
+            finished: { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    // 清缓存后重建面板：底部状态会从「无缝循环」变成「PerfectLoop 无缝循环」，
+                    // 安装区整块消失，用户立刻看到已启用。
+                    self.tuningPop?.contentViewController = self.makeTuningController()
+                case .failure(let err):
+                    self.pluginInstallStatus?.stringValue = err.message
+                    self.pluginInstallStatus?.textColor = .systemRed
+                    self.pluginInstallButton?.isEnabled = true
+                }
+            }
+        )
     }
 
     private func makeSettingsController() -> NSViewController {
@@ -2914,6 +3382,33 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         let title = NSTextField(labelWithString: "设置")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         stack.addArrangedSubview(title)
+
+        // 存起来：折叠时要靠它重算弹层高度
+        settingsVC = vc
+        settingsRoot = root
+        settingsStack = stack
+        pauseSectionRows = []
+        rotateSectionRows = []
+        // 每次打开都回到收起态（用户要的默认收起）
+        pauseExpanded = false
+        rotateExpanded = false
+
+        // 外观：深浅色从底栏搬进来（底栏那个位置让给账号头像）
+        let lookRow = NSStackView()
+        lookRow.orientation = .horizontal
+        lookRow.alignment = .centerY
+        lookRow.spacing = 8
+        let lookLabel = NSTextField(labelWithString: "深色模式")
+        lookLabel.font = .systemFont(ofSize: 12.5)
+        let lookSwitch = NSSwitch()
+        lookSwitch.state = LibraryBackdrop.darkMode ? .on : .off
+        lookSwitch.target = self
+        lookSwitch.action = #selector(darkModeChanged(_:))
+        settingsDarkSwitch = lookSwitch
+        lookRow.addArrangedSubview(lookLabel)
+        lookRow.addArrangedSubview(lookSwitch)
+        stack.addArrangedSubview(lookRow)
+        lookRow.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
 
         // 统计开关：名字和说明都是文档里定好的原文，别改
         let row = NSStackView()
@@ -2967,6 +3462,116 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         blurRow.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
         blurSlider.widthAnchor.constraint(equalToConstant: 130).isActive = true
 
+        // 自动暂停：壁纸是背景，前景该独占资源时让路（借鉴 Lively 的暂停策略）。
+        // 命中时只停住画面、不关壁纸，条件解除后原地续播。
+        // 默认收起：这块三个开关平时不用看，收起来弹层才不挤。
+        let pauseHeading = SettingsSectionHeader(title: "自动暂停")
+        pauseHeading.onToggle = { [weak self] in self?.toggleSettingsSection(.pause) }
+        stack.addArrangedSubview(pauseHeading)
+        pauseHeading.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+        pauseHeader = pauseHeading
+
+        // 一行「标签 + 开关」。同时登记到所属折叠组，收起时整行隐藏
+        func settingsRow(_ title: String, on: Bool, action: Selector,
+                         section: SettingsSection) -> NSSwitch {
+            let r = NSStackView()
+            r.orientation = .horizontal
+            r.alignment = .centerY
+            r.spacing = 8
+            let label = NSTextField(labelWithString: title)
+            label.font = .systemFont(ofSize: 12.5)
+            let sw = NSSwitch()
+            sw.state = on ? .on : .off
+            sw.target = self
+            sw.action = action
+            r.addArrangedSubview(label)
+            r.addArrangedSubview(sw)
+            stack.addArrangedSubview(r)
+            r.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+            appendRow(r, to: section)
+            r.isHidden = true      // 默认收起
+            return sw
+        }
+        pauseFullscreenSwitch = settingsRow("前台全屏时暂停", on: Tuning.pauseOnFullscreen,
+                                            action: #selector(pauseFullscreenChanged(_:)),
+                                            section: .pause)
+        pauseLockSwitch = settingsRow("锁屏 / 息屏时暂停", on: Tuning.pauseOnLock,
+                                      action: #selector(pauseLockChanged(_:)), section: .pause)
+        dynamicLockSwitch = settingsRow("锁屏动态播放（视频）", on: DynamicLockScreen.isEnabled,
+                                        action: #selector(dynamicLockChanged(_:)), section: .pause)
+        pauseLowBatterySwitch = settingsRow("低电量模式时暂停", on: Tuning.pauseOnLowBattery,
+                                           action: #selector(pauseLowBatteryChanged(_:)),
+                                           section: .pause)
+
+        // 自动轮换：什么时候自动换下一张。同样默认收起
+        let rotHeading = SettingsSectionHeader(title: "自动轮换")
+        rotHeading.onToggle = { [weak self] in self?.toggleSettingsSection(.rotate) }
+        stack.addArrangedSubview(rotHeading)
+        rotHeading.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+        rotateHeader = rotHeading
+
+        rotateSwitch = settingsRow("自动轮换壁纸", on: Rotation.enabled,
+                                   action: #selector(rotateEnabledChanged(_:)), section: .rotate)
+
+        // 换的规则：随机 / 顺序
+        let modeRow = NSStackView()
+        modeRow.orientation = .horizontal
+        modeRow.alignment = .centerY
+        modeRow.spacing = 8
+        let modeLabel = NSTextField(labelWithString: "切换方式")
+        modeLabel.font = .systemFont(ofSize: 12.5)
+        let modePop = NSPopUpButton(frame: .zero, pullsDown: false)
+        modePop.addItems(withTitles: ["随机", "顺序（下一张）"])
+        modePop.selectItem(at: Rotation.mode == .random ? 0 : 1)
+        modePop.target = self
+        modePop.action = #selector(rotateModeChanged(_:))
+        modePop.controlSize = .small
+        modePop.font = .systemFont(ofSize: 12)
+        modeRow.addArrangedSubview(modeLabel)
+        modeRow.addArrangedSubview(NSView())      // 中间留白，把下拉推到右边
+        modeRow.addArrangedSubview(modePop)
+        stack.addArrangedSubview(modeRow)
+        modeRow.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+        rotateModePop = modePop
+        appendRow(modeRow, to: .rotate)
+        modeRow.isHidden = true
+
+        // 触发条件（多选）
+        rotateLaunchSwitch = settingsRow("每次启动时切换", on: Rotation.onLaunch,
+                                         action: #selector(rotateLaunchChanged(_:)), section: .rotate)
+        rotateUnlockSwitch = settingsRow("锁屏解锁时切换", on: Rotation.onUnlock,
+                                         action: #selector(rotateUnlockChanged(_:)), section: .rotate)
+        rotateWakeSwitch = settingsRow("从睡眠唤醒时切换", on: Rotation.onWake,
+                                        action: #selector(rotateWakeChanged(_:)), section: .rotate)
+
+        // 定时切换
+        let ivRow = NSStackView()
+        ivRow.orientation = .horizontal
+        ivRow.alignment = .centerY
+        ivRow.spacing = 8
+        let ivLabel = NSTextField(labelWithString: "定时切换")
+        ivLabel.font = .systemFont(ofSize: 12.5)
+        let ivPop = NSPopUpButton(frame: .zero, pullsDown: false)
+        ivPop.addItems(withTitles: Rotation.intervalOptions.map { $0.title })
+        if let idx = Rotation.intervalOptions.firstIndex(where: { abs($0.seconds - Rotation.interval) < 1 }) {
+            ivPop.selectItem(at: idx)
+        }
+        ivPop.target = self
+        ivPop.action = #selector(rotateIntervalChanged(_:))
+        ivPop.controlSize = .small
+        ivPop.font = .systemFont(ofSize: 12)
+        ivRow.addArrangedSubview(ivLabel)
+        ivRow.addArrangedSubview(NSView())
+        ivRow.addArrangedSubview(ivPop)
+        stack.addArrangedSubview(ivRow)
+        ivRow.widthAnchor.constraint(equalToConstant: width - 32).isActive = true
+        rotateIntervalPop = ivPop
+        appendRow(ivRow, to: .rotate)
+        ivRow.isHidden = true
+
+        updateRotationControlsEnabled()
+        refreshSectionHeaders()
+
         let line = NSBox()
         line.boxType = .separator
         stack.addArrangedSubview(line)
@@ -2987,7 +3592,16 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         btn.controlSize = .small
         btn.font = .systemFont(ofSize: 11.5)
         settingsAction = btn
+        // 反馈入口：平时只有「反馈」两个字，悬停才展开飞书群信息，点击直接进群
+        let feedback = FeedbackLink()
+        feedback.tipHost = root
+        feedbackLink = feedback
+        feedback.onOpen = {
+            Analytics.shared.track("feedback_open")
+            NSWorkspace.shared.open(FeedbackLink.inviteURL)
+        }
         versionRow.addArrangedSubview(verLabel)
+        versionRow.addArrangedSubview(feedback)
         versionRow.addArrangedSubview(NSView())      // 中间留白，把按钮推到右边
         versionRow.addArrangedSubview(btn)
         stack.addArrangedSubview(versionRow)
@@ -3010,6 +3624,120 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         vc.preferredContentSize = NSSize(width: width, height: h)
         refreshSettingsState()
         return vc
+    }
+
+    @objc private func pauseFullscreenChanged(_ sender: NSSwitch) {
+        Tuning.pauseOnFullscreen = sender.state == .on
+        refreshSectionHeaders()
+    }
+    @objc private func pauseLockChanged(_ sender: NSSwitch) {
+        Tuning.pauseOnLock = sender.state == .on
+        refreshSectionHeaders()
+    }
+    @objc private func pauseLowBatteryChanged(_ sender: NSSwitch) {
+        Tuning.pauseOnLowBattery = sender.state == .on
+        refreshSectionHeaders()
+    }
+    /// 锁屏动态：交给主程序部署视频 + 引导去系统设置选壁纸。
+    /// 这里不做任何系统调用，失败也不影响桌面壁纸。
+    @objc private func dynamicLockChanged(_ sender: NSSwitch) {
+        delegate?.librarySetDynamicLock(sender.state == .on)
+    }
+
+    // MARK: 自动轮换
+
+    /// 设置弹层里可折叠的两组
+    enum SettingsSection { case pause, rotate }
+
+    private func appendRow(_ view: NSView, to section: SettingsSection) {
+        switch section {
+        case .pause: pauseSectionRows.append(view)
+        case .rotate: rotateSectionRows.append(view)
+        }
+    }
+
+    private func rows(for section: SettingsSection) -> [NSView] {
+        section == .pause ? pauseSectionRows : rotateSectionRows
+    }
+
+    /// 展开 / 收起一组：隐藏子行后重算弹层高度，NSPopover 会跟着长高一截
+    private func toggleSettingsSection(_ section: SettingsSection) {
+        switch section {
+        case .pause: pauseExpanded.toggle()
+        case .rotate: rotateExpanded.toggle()
+        }
+        let expanded = section == .pause ? pauseExpanded : rotateExpanded
+        for v in rows(for: section) { v.isHidden = !expanded }
+        refreshSectionHeaders()
+        resizeSettingsPopover()
+    }
+
+    /// 收起时在标题右边写一句状态，省得用户为了看一眼还得展开
+    private func refreshSectionHeaders() {
+        let pauseOn = [Tuning.pauseOnFullscreen, Tuning.pauseOnLock, Tuning.pauseOnLowBattery]
+            .filter { $0 }.count
+        pauseHeader?.update(summary: pauseOn == 0 ? "全部关闭" : "\(pauseOn) 项开启",
+                            expanded: pauseExpanded)
+
+        let rotateSummary: String
+        if Rotation.enabled {
+            let modeText = Rotation.mode == .random ? "随机" : "顺序"
+            rotateSummary = "已开启 · \(modeText)"
+        } else {
+            rotateSummary = "已关闭"
+        }
+        rotateHeader?.update(summary: rotateSummary, expanded: rotateExpanded)
+    }
+
+    /// 折叠后内容变短，弹层要跟着缩，否则下面空一大片
+    private func resizeSettingsPopover() {
+        guard let vc = settingsVC, let root = settingsRoot, let stack = settingsStack else { return }
+        let width: CGFloat = 330
+        root.layoutSubtreeIfNeeded()
+        let h = max(stack.fittingSize.height, 120)
+        guard abs(root.frame.height - h) > 0.5 else { return }
+        root.setFrameSize(NSSize(width: width, height: h))
+        // NSPopover 会按这个值自动长高/缩短，箭头仍然指着原来那个按钮
+        vc.preferredContentSize = NSSize(width: width, height: h)
+    }
+
+    @objc private func rotateEnabledChanged(_ sender: NSSwitch) {
+        Rotation.enabled = sender.state == .on
+        updateRotationControlsEnabled()
+        refreshSectionHeaders()
+    }
+
+    @objc private func rotateModeChanged(_ sender: NSPopUpButton) {
+        Rotation.mode = sender.indexOfSelectedItem == 0 ? .random : .sequential
+        refreshSectionHeaders()
+    }
+
+    @objc private func rotateLaunchChanged(_ sender: NSSwitch) {
+        Rotation.onLaunch = sender.state == .on
+    }
+
+    @objc private func rotateUnlockChanged(_ sender: NSSwitch) {
+        Rotation.onUnlock = sender.state == .on
+    }
+
+    @objc private func rotateWakeChanged(_ sender: NSSwitch) {
+        Rotation.onWake = sender.state == .on
+    }
+
+    @objc private func rotateIntervalChanged(_ sender: NSPopUpButton) {
+        let i = sender.indexOfSelectedItem
+        guard Rotation.intervalOptions.indices.contains(i) else { return }
+        Rotation.interval = Rotation.intervalOptions[i].seconds
+    }
+
+    /// 总开关关掉时，下面这些子项统一置灰，一眼看出「现在不生效」
+    private func updateRotationControlsEnabled() {
+        let on = Rotation.enabled
+        rotateModePop?.isEnabled = on
+        rotateLaunchSwitch?.isEnabled = on
+        rotateUnlockSwitch?.isEnabled = on
+        rotateWakeSwitch?.isEnabled = on
+        rotateIntervalPop?.isEnabled = on
     }
 
     @objc private func analyticsSwitchChanged(_ sender: NSSwitch) {
@@ -3046,8 +3774,50 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     }
 
     /// 把 Analytics / Updater 的当前状态画到弹层上
+    // MARK: 账号
+
+    /// 点底栏头像：弹账号面板（未登录是登录表单，已登录是个人信息 + 同步状态）
+    private func toggleAccount(from anchor: NSView) {
+        if let pop = accountPop, pop.isShown {
+            pop.performClose(nil)
+            return
+        }
+        guard SyncConfig.isConfigured || SyncCenter.shared.isLoggedIn else {
+            let a = NSAlert()
+            a.messageText = "同步服务器还没配置"
+            a.informativeText = "这个版本没有填 SyncBaseURL，登录会失败。请更新到正式版。"
+            a.runModal()
+            return
+        }
+        let vc = AccountViewController()
+        let pop = NSPopover()
+        vc.hostPopover = pop
+        pop.behavior = .transient
+        pop.animates = true
+        pop.contentViewController = vc
+        pop.delegate = self
+        pop.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+        accountPop = pop
+        avatarPill?.refresh()
+    }
+
+    @objc private func darkModeChanged(_ sender: NSSwitch) {
+        LibraryBackdrop.darkMode = sender.state == .on
+    }
+
     private func refreshSettingsState() {
         settingsSwitch?.state = Analytics.shared.isEnabled ? .on : .off
+        settingsDarkSwitch?.state = LibraryBackdrop.darkMode ? .on : .off
+        pauseFullscreenSwitch?.state = Tuning.pauseOnFullscreen ? .on : .off
+        pauseLockSwitch?.state = Tuning.pauseOnLock ? .on : .off
+        pauseLowBatterySwitch?.state = Tuning.pauseOnLowBattery ? .on : .off
+        dynamicLockSwitch?.state = DynamicLockScreen.isEnabled ? .on : .off
+        rotateSwitch?.state = Rotation.enabled ? .on : .off
+        rotateLaunchSwitch?.state = Rotation.onLaunch ? .on : .off
+        rotateUnlockSwitch?.state = Rotation.onUnlock ? .on : .off
+        rotateWakeSwitch?.state = Rotation.onWake ? .on : .off
+        updateRotationControlsEnabled()
+        refreshSectionHeaders()
         guard let btn = settingsAction, let status = settingsStatus else { return }
 
         switch Updater.shared.state {
@@ -3353,9 +4123,14 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
     /// 磁贴上方浮一块名字气泡（位置照程序坞标签来）
     private func showTip(for pill: SettingPill) {
+        showTip(text: pill.tipText, anchor: pill)
+    }
+
+    /// 头像不是 SettingPill，但气泡长得一样
+    private func showTip(text: String, anchor: NSView) {
         guard let shell, let tip = dockTip else { return }
-        let r = pill.convert(pill.bounds, to: shell)
-        tip.show(text: pill.tipText, above: r, in: shell)
+        let r = anchor.convert(anchor.bounds, to: shell)
+        tip.show(text: text, above: r, in: shell)
     }
 
     // MARK: 动作

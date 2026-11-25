@@ -507,6 +507,8 @@ final class AccountViewController: NSViewController {
     private var profileStatus: NSTextField!
 
     private let width: CGFloat = 316
+    /// 弹层本体：切换页面后要主动改它的大小，光改 preferredContentSize 不会生效
+    weak var hostPopover: NSPopover?
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 300))
@@ -1140,6 +1142,13 @@ final class AccountViewController: NSViewController {
         let h = max(stack.fittingSize.height, 120)
         view.frame = NSRect(x: 0, y: 0, width: width, height: h)
         preferredContentSize = NSSize(width: width, height: h)
+        // 关键：弹层已经显示出来之后，改 preferredContentSize 不会重排窗口，
+        // 结果是页面变高、内容被裁在顶部（标题、编辑页的头像都点不到）。
+        if let pop = hostPopover, pop.isShown {
+            pop.contentSize = NSSize(width: width, height: h)
+        } else {
+            view.window?.setContentSize(NSSize(width: width, height: h))
+        }
     }
 
     private static func mb(_ bytes: Int64) -> String {
