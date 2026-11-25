@@ -196,6 +196,21 @@ function markDirty() {
   dirty = true;
 }
 
+/**
+ * 「重要写操作」用：标脏后 3 秒内立刻补一份。
+ * 典型场景是注册——刚建好的账号如果落在「定时器还没到」的窗口里被清盘，就白注册了。
+ */
+let soonTimer = null;
+function markDirtySoon() {
+  dirty = true;
+  if (soonTimer) return;
+  soonTimer = setTimeout(() => {
+    soonTimer = null;
+    push().catch(() => {});
+  }, 3000);
+  soonTimer.unref?.();
+}
+
 function start() {
   if (!ENABLED) return;
   if (timer) return;
@@ -211,4 +226,4 @@ async function flush() {
   await push(false).catch(() => {});
 }
 
-module.exports = { init, start, markDirty, flush, push, status, restoreIfNeeded, list, KEEP };
+module.exports = { init, start, markDirty, markDirtySoon, flush, push, status, restoreIfNeeded, list, KEEP };

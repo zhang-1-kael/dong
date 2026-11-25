@@ -233,7 +233,7 @@ async function handle(req, res) {
     };
     accounts[email] = user;
     await writeJson(F.accounts, accounts);
-    snapshot.markDirty();
+    snapshot.markDirtySoon();   // 新账号别等 10 分钟
     await fsp.mkdir(assetDir(user.id), { recursive: true });
 
     const token = issueToken(user.id);
