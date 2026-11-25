@@ -20,6 +20,7 @@ const fsp = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const storage = require("./storage");
+const snapshot = require("./snapshot");
 
 const PORT = Number(process.env.SYNC_PORT || process.env.PORT || 8787);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
@@ -63,6 +64,7 @@ setInterval(() => {
 }, 60_000).unref();
 
 storage.init(DATA_DIR, { maxAsset: MAX_ASSET });
+snapshot.init(DATA_DIR);
 let gatewayHealth = { ok: true, mode: storage.mode() };
 
 const F = {
@@ -199,6 +201,7 @@ async function handle(req, res) {
       ok: healthy,
       time: Date.now(),
       storage: gatewayHealth.mode,
+      snapshot: snapshot.status().enabled ? "on" : "off",
       ...(healthy ? {} : { error: gatewayHealth.error }),
     });
   }
@@ -228,10 +231,12 @@ async function handle(req, res) {
     };
     accounts[email] = user;
     await writeJson(F.accounts, accounts);
+    snapshot.markDirty();
     await fsp.mkdir(assetDir(user.id), { recursive: true });
 
     const token = issueToken(user.id);
     await writeJson(F.tokens, tokens);
+    snapshot.markDirty();
     return send(res, 200, { token, email, userId: user.id, quotaBytes: user.quotaBytes });
   }
 
@@ -255,6 +260,7 @@ async function handle(req, res) {
 
     const token = issueToken(user.id);
     await writeJson(F.tokens, tokens);
+    snapshot.markDirty();
     return send(res, 200, { token, email, userId: user.id, quotaBytes: user.quotaBytes });
   }
 
@@ -268,6 +274,7 @@ async function handle(req, res) {
     if (m) {
       delete tokens[sha256(Buffer.from(m[1]))];
       await writeJson(F.tokens, tokens);
+      snapshot.markDirty();
     }
     return send(res, 200, { ok: true });
   }
@@ -297,6 +304,7 @@ async function handle(req, res) {
     const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
     if (email) accounts[email] = user;
     await writeJson(F.accounts, accounts);
+    snapshot.markDirty();
 
     // 其它设备上的登录作废，当前这台保留
     const keep = rawToken(req);
@@ -340,6 +348,7 @@ async function handle(req, res) {
       updatedAt: Date.now(),
     };
     await writeJson(manifestPath(user.id), next);
+    snapshot.markDirty();
     return send(res, 200, { rev: next.rev, updatedAt: next.updatedAt });
   }
 
@@ -360,6 +369,7 @@ async function handle(req, res) {
 
       try {
         const r = await storage.put(user.id, id, req);
+        snapshot.markDirty();
         return send(res, 200, { id, bytes: r.bytes, sha256: r.sha256 });
       } catch (e) {
         const msg = String(e.message || e);
@@ -390,6 +400,7 @@ async function handle(req, res) {
     }
     if (method === "DELETE") {
       await storage.del(user.id, id);
+      snapshot.markDirty();
       return send(res, 200, { ok: true });
     }
   }
@@ -405,7 +416,16 @@ const server = http.createServer((req, res) => {
   });
 });
 
-initStore()
+(async () => {
+  // 先看要不要从快照恢复：平台会清 /tmp，本地可能一个文件都不剩
+  try {
+    const r = await snapshot.restoreIfNeeded();
+    if (!r.restored && r.reason) console.log(`[dong-sync] 未恢复快照：${r.reason}`);
+  } catch (e) {
+    console.error("[dong-sync] 快照恢复异常", String(e.message || e));
+  }
+  await initStore();
+})()
   .then(() => storage.selfCheck())
   .then((health) => {
     gatewayHealth = health;
@@ -421,4 +441,13 @@ initStore()
   .catch((e) => console.error("[dong-sync] storage selfcheck error", e))
   .then(() => {
     server.listen(PORT, () => console.log(`[dong-sync] listening on :${PORT}`));
+    snapshot.start();
   });
+
+// 退出前尽量补一份，别把最后几分钟的改动丢掉
+for (const sig of ["SIGTERM", "SIGINT"]) {
+  process.on(sig, () => {
+    snapshot.flush().finally(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5_000).unref();
+  });
+}

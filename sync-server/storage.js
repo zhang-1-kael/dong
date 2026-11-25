@@ -267,7 +267,53 @@ async function selfCheck() {
   return { ok: true, mode: MODE, gateway: GW_BASE };
 }
 
+// ── 给快照模块用的底层能力 ──────────────────────────────────
+// 快照要往网关推整包、还要列举/取回/删除，复用同一套鉴权和 base
+
+/** PUT 一个 Buffer 到网关的任意内部路由 */
+function gwPutBuffer(pathName, query, buffer) {
+  return new Promise((resolve) => {
+    const u = gwURL(pathName, query);
+    const lib = u.protocol === "http:" ? http : https;
+    const req = lib.request(
+      { method: "PUT", hostname: u.hostname, port: u.port, path: u.pathname + u.search,
+        headers: gwHeaders({ "content-type": "application/octet-stream",
+                             "content-length": buffer.length }),
+        timeout: 120_000 },
+      (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          let body = {};
+          try { body = JSON.parse(text || "{}"); } catch {}
+          resolve({ status: res.statusCode || 0, body });
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("gateway timeout")));
+    req.on("error", (e) => resolve({ status: 0, body: { error: e.message } }));
+    req.end(buffer);
+  });
+}
+
+/** 跟随签名直链把对象取回内存（只用于快照，体积很小） */
+function fetchURL(url) {
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL(url); } catch { resolve(null); return; }
+    const lib = u.protocol === "http:" ? http : https;
+    lib.get(u, (res) => {
+      if (res.statusCode !== 200) { res.resume(); resolve(null); return; }
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+    }).on("error", () => resolve(null));
+  });
+}
+
 module.exports = {
   init, put, locate, del, usedBytes, selfCheck,
   mode, configured, downloadMode: () => GW_DOWNLOAD,
+  gwJSON, gwPutBuffer, fetchURL,
 };
