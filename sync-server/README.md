@@ -100,6 +100,7 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 | POST | `/api/auth/register` | `{email,password}` → `{token,...}` |
 | POST | `/api/auth/login` | 同上 |
 | POST | `/api/auth/logout` | 作废当前 token |
+| POST | `/api/auth/password` | 改密码 `{oldPassword,newPassword}`；成功后作废其它设备令牌，当前设备保留 |
 | GET | `/api/me` | 邮箱、配额、已用字节 |
 | GET | `/api/sync/manifest` | 清单（含 `rev`） |
 | PUT | `/api/sync/manifest` | 写清单，带 `if-match: <rev>`，对不上返回 409 |

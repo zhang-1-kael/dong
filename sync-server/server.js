@@ -172,6 +172,11 @@ function authUser(req) {
   return entry;
 }
 
+function rawToken(req) {
+  const m = /^Bearer\s+(.+)$/i.exec(req.headers["authorization"] || "");
+  return m ? m[1] : null;
+}
+
 function issueToken(userId) {
   const raw = crypto.randomBytes(32).toString("hex");
   tokens[sha256(Buffer.from(raw))] = { userId, expiresAt: Date.now() + TOKEN_DAYS * 86400_000 };
@@ -264,6 +269,42 @@ async function handle(req, res) {
       delete tokens[sha256(Buffer.from(m[1]))];
       await writeJson(F.tokens, tokens);
     }
+    return send(res, 200, { ok: true });
+  }
+
+  // ---- 改密码 ----
+  if (p === "/api/auth/password" && method === "POST") {
+    if (!allow(req, "login")) return fail(res, 429, "试得太快了，等一分钟再试");
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      return fail(res, 400, "请求格式不对");
+    }
+    const oldPassword = String(body.oldPassword || "");
+    const newPassword = String(body.newPassword || "");
+    if (newPassword.length < 8) return fail(res, 400, "新密码至少 8 位");
+    if (oldPassword === newPassword) return fail(res, 400, "新密码和旧密码一样");
+
+    const hash = scrypt(oldPassword, user.salt);
+    if (!crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(user.hash, "hex"))) {
+      return fail(res, 401, "当前密码不对");
+    }
+
+    const salt = crypto.randomBytes(16).toString("hex");
+    user.salt = salt;
+    user.hash = scrypt(newPassword, salt);
+    const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
+    if (email) accounts[email] = user;
+    await writeJson(F.accounts, accounts);
+
+    // 其它设备上的登录作废，当前这台保留
+    const keep = rawToken(req);
+    const keepHash = keep ? sha256(Buffer.from(keep)) : null;
+    for (const [k, v] of Object.entries(tokens)) {
+      if (v.userId === user.id && k !== keepHash) delete tokens[k];
+    }
+    await writeJson(F.tokens, tokens);
     return send(res, 200, { ok: true });
   }
 
