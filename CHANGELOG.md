@@ -1,4 +1,17 @@
-### F21.25 · 发版 3.45 / 67 — 状态：`GitHub 已发布 / 官网与 Gitee 待用户操作`
+### F21.26 · 修「锁屏变成系统默认壁纸」：动态锁屏扩展缺失时强制走静态帧 — 状态：`运行态已恢复 / 代码已改 / 待并入下一版`
+- **日期**：2026-11-26
+- **用户反馈**：锁屏变成原本的系统壁纸了，要求改回「锁屏取一帧静态帧」。
+- **根因（两段叠加）**：
+  1. 偏好里 `dynamicLockScreen = 1`（历史开启），但 **3.44 / 3.43 的包都没有 `Contents/PlugIns/*.appex`**（锁屏扩展未打包），`pushLockScreen` 仍走动态分支 → 直接 return，**不再调 `LockScreen.apply` 抽帧设壁纸**。
+  2. 系统壁纸 Store（`~/Library/Application Support/com.apple.wallpaper/Store/Index.plist`）里的记录指向**已不存在的文件**（`locks/🌂.jpg`、容器里已删的 `lock.mp4`），系统于是回退到默认壁纸。
+  - 补充：当前壁纸 `【哲风壁纸】wink-吊带短裙.mp4` 在 18:06 换上时动态锁屏还开着，所以它的静态帧从未生成。
+- **修复（两层）**：
+  1. **运行态立即恢复**：`dynamicLockScreen` 置 0 → 用与 `LockScreen.ensureFrame` 相同逻辑（35% 处抽帧、按屏幕像素、JPEG 0.92）补生成 `locks/【哲风壁纸】wink-吊带短裙.jpg`（2816×1484）→ `NSWorkspace.setDesktopImageURL` 设为桌面壁纸（锁屏随之同步）。复核 Index.plist 中 locks 引用 **4/4 全部指向存在的文件**。
+  2. **代码防御**：`DynamicLockScreen.extensionAvailable`（检查 `Bundle.main.builtInPlugInsURL` 下有无 `.appex`）；`pushLockScreen` 改为 `isEnabled && extensionAvailable` 才走动态分支；`LibraryWindow` 里「锁屏动态播放（视频）」开关仅在扩展存在时创建。这样以后无论偏好怎么设，只要包里没扩展就一定走静态帧。
+- **改动文件**：`DynamicLockScreen.swift`（+extensionAvailable）、`main.swift`（pushLockScreen 条件）、`LibraryWindow.swift`（开关条件创建）。
+- **注意**：当前已装 App 是 **3.44/66**，工作区源码是 **3.45/67**；本修复代码需并入下一版（3.46）才会进入安装包，运行态修复已即时生效。
+
+### F21.25 · 发版 3.45 / 67 — 状态：`GitHub 已发布 / Gitee 已发布 / 官网待填元数据`
 
 - **日期**：2026-11-26
 - **版本**：`Info.plist` 3.44/66 → **3.45/67**；10 个 README 版本串（正文 + 徽章）同步
@@ -15,7 +28,8 @@
 - **发布**：
   - GitHub：tag `v3.45` + Release「Dòng 3.45」已建并设为 Latest，附件 `Dong-3.45.dmg`
     （API digest 与上面 sha256 一致）；`main` 已推到 `cd702ae`
-  - Gitee：停在 `0a25910`（3.44），**推送需要用户提供私人令牌**，无凭据未动
+  - Gitee：**已同步 3.45**（2026-11-26 20:15 补做）。`main` → `facdf4c`（3.45 代码 + 十语言 README 版本串 + 7 处链接本地化）；tag `v3.45` 已推；Release「Dòng 3.45」（id `1372063`）附件 `Dòng-3.45.dmg`，匿名下载 HTTP 200、`Content-Length 61838037` 与包大小一致。
+    凭据取自钥匙串 `gitee.com`（`dong-is-good`），未落盘。同步方式：`fetch 本地 main → reset --hard → 本地化 README → commit → push --force`。
   - 官网：`/api/update/check?version=3.44&build=66` 仍返回 3.44/66，**待后台填元数据**
     （6 个值见 `Dòng 3.45-发版清单.md`）；填完老用户才能收到提示
 - **未覆盖本机**：`/Applications/Dòng.app` 仍是 3.44 修复版，留着给用户验证「3.44 → 3.45 更新提示」
