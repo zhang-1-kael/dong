@@ -95,15 +95,17 @@ fi
 # 它只负责锁屏那一层：PlaybackPolicy 里 alwaysPauseDesktop = true 时桌面暂停、
 # 只在 presentionMode == locked 渲染，所以和主程序的桌面自绘窗口可以共存。
 # 排查构建问题时用 VW_NO_LOCKSCREEN=1 跳过。
-if [ -z "$VW_NO_LOCKSCREEN" ]; then
+if [ -z "$VW_NO_LOCKSCREEN" ] && [ -f build_ext.sh ]; then
   echo "==> 编译锁屏扩展"
   zsh build_ext.sh --build >/dev/null
   mkdir -p "$APP/Contents/Extensions"
   rm -rf "$APP/Contents/Extensions/DongLockScreen.appex"
   cp -R build/DongLockScreen.appex "$APP/Contents/Extensions/"
   echo "==> 内置锁屏扩展（$(du -sh build/DongLockScreen.appex | cut -f1)）"
-else
+elif [ -n "$VW_NO_LOCKSCREEN" ]; then
   echo "==> 跳过锁屏扩展（VW_NO_LOCKSCREEN=1）"
+else
+  echo "==> 跳过锁屏扩展（未包含 build_ext.sh，常见于 CI）"
 fi
 
 # 本地开发用 ad-hoc 签名：只能自己这台机器跑。
