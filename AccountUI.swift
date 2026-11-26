@@ -379,7 +379,7 @@ final class AccountFieldBox: NSView {
 
 // MARK: - 主按钮
 
-final class AccountButton: NSButton {
+class AccountButton: NSButton {
 
     enum Kind { case primary, quiet }
 

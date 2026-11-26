@@ -35,6 +35,7 @@ const TOKEN_DAYS = Number(process.env.DONG_TOKEN_DAYS || 60);
 const LIMITS = {
   register: { max: 5, windowMs: 60_000 },
   login: { max: 12, windowMs: 60_000 },
+  reset: { max: 6, windowMs: 60_000 },
 };
 const hits = new Map(); // "ip|bucket" -> { count, resetAt }
 
@@ -171,6 +172,9 @@ function authUser(req) {
   const rec = tokens[sha256(Buffer.from(m[1]))];
   if (!rec) return null;
   if (rec.expiresAt < Date.now()) return null;
+  // 每台设备「最近活跃」——设备列表要显示这个
+  rec.lastSeen = Date.now();
+  tokensDirty = true;
   const entry = Object.values(accounts).find((a) => a.id === rec.userId);
   if (!entry) return null;
   return entry;
@@ -181,11 +185,37 @@ function rawToken(req) {
   return m ? m[1] : null;
 }
 
-function issueToken(userId) {
+function issueToken(userId, device) {
   const raw = crypto.randomBytes(32).toString("hex");
-  tokens[sha256(Buffer.from(raw))] = { userId, expiresAt: Date.now() + TOKEN_DAYS * 86400_000 };
+  const now = Date.now();
+  tokens[sha256(Buffer.from(raw))] = {
+    userId,
+    device: String(device || "").slice(0, 60) || "未知设备",
+    createdAt: now,
+    lastSeen: now,
+    expiresAt: now + TOKEN_DAYS * 86400_000,
+  };
   return raw;
 }
+
+/// 设备名由客户端在请求头里报上来；没报就写「未知设备」，不要瞎猜 UA
+function deviceName(req) {
+  const raw = String(req.headers["x-device-name"] || "").trim();
+  if (!raw) return "未知设备";
+  // 客户端做了百分号编码（中文电脑名在 HTTP 头里会花）
+  let d = raw;
+  try { d = decodeURIComponent(raw); } catch {}
+  return d.slice(0, 60) || "未知设备";
+}
+
+/// 最近活跃时间只在内存里更新，60 秒落一次盘。
+/// 每条请求都写文件的话，磁盘和历史快照会被刷爆。
+let tokensDirty = false;
+setInterval(() => {
+  if (!tokensDirty) return;
+  tokensDirty = false;
+  writeJson(F.tokens, tokens).catch(() => {});
+}, 60_000).unref();
 
 function validEmail(s) {
   return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 160;
@@ -238,7 +268,7 @@ async function handle(req, res) {
     snapshot.markDirtySoon();   // 新账号别等 10 分钟
     await fsp.mkdir(assetDir(user.id), { recursive: true });
 
-    const token = issueToken(user.id);
+    const token = issueToken(user.id, deviceName(req));
     await writeJson(F.tokens, tokens);
     snapshot.markDirty();
     return send(res, 200, { token, email, userId: user.id, quotaBytes: user.quotaBytes });
@@ -262,10 +292,55 @@ async function handle(req, res) {
     const ok = crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(user.hash, "hex"));
     if (!ok) return fail(res, 401, "邮箱或密码不正确");
 
-    const token = issueToken(user.id);
+    const token = issueToken(user.id, deviceName(req));
     await writeJson(F.tokens, tokens);
     snapshot.markDirty();
     return send(res, 200, { token, email, userId: user.id, quotaBytes: user.quotaBytes });
+  }
+
+  // ---- 用恢复码重设密码（不需要登录）----
+  // 这是「忘了密码」的唯一出路：用户事先抄下 16 位恢复码，用它换新密码。
+  // 恢复码一次性，用掉就作废，必须重新生成。
+  if (p === "/api/auth/recovery/reset" && method === "POST") {
+    if (!allow(req, "reset")) return fail(res, 429, "试得太快了，等一分钟再试");
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      return fail(res, 400, "请求格式不对");
+    }
+    const email = String(body.email || "").trim().toLowerCase();
+    const code = String(body.code || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    const newPassword = String(body.newPassword || "");
+    if (newPassword.length < 8) return fail(res, 400, "新密码至少 8 位");
+    if (!validEmail(email)) return fail(res, 400, "邮箱格式不对");
+
+    // 统一文案：不透露邮箱是否存在、是否生成过恢复码
+    const bad = () => fail(res, 400, "邮箱或恢复码不正确");
+    const u = accounts[email];
+    if (!u || !u.recovery) return bad();
+    if (u.recovery.createdAt && Date.now() - u.recovery.createdAt > 365 * 86400_000) {
+      return fail(res, 400, "恢复码过期了，请登录后重新生成");
+    }
+    const got = scrypt(code, u.recovery.salt);
+    const want = u.recovery.hash;
+    if (got.length !== want.length) return bad();
+    if (!crypto.timingSafeEqual(Buffer.from(got, "hex"), Buffer.from(want, "hex"))) return bad();
+
+    const salt = crypto.randomBytes(16).toString("hex");
+    u.salt = salt;
+    u.hash = scrypt(newPassword, salt);
+    delete u.recovery;                     // 一次性，用掉即失效
+    accounts[email] = u;
+    await writeJson(F.accounts, accounts);
+
+    // 全部设备下线：能拿到恢复码的人应该是主人，但保险起见重登一次
+    for (const [k, v] of Object.entries(tokens)) {
+      if (v.userId === u.id) delete tokens[k];
+    }
+    await writeJson(F.tokens, tokens);
+    snapshot.markDirtySoon();
+    return send(res, 200, { ok: true });
   }
 
   // ---- 以下都要登录 ----
@@ -280,6 +355,81 @@ async function handle(req, res) {
       await writeJson(F.tokens, tokens);
       snapshot.markDirty();
     }
+    return send(res, 200, { ok: true });
+  }
+
+  // ---- 登录设备 ----
+  if (p === "/api/auth/sessions" && method === "GET") {
+    const cur = sha256(Buffer.from(rawToken(req) || ""));
+    const list = Object.entries(tokens)
+      .filter(([, v]) => v.userId === user.id && v.expiresAt > Date.now())
+      .map(([k, v]) => ({
+        id: k.slice(0, 8),
+        device: v.device || "未知设备",
+        createdAt: v.createdAt || 0,
+        lastSeen: v.lastSeen || v.createdAt || 0,
+        current: k === cur,
+      }))
+      .sort((a, b) => Number(b.current) - Number(a.current) || b.lastSeen - a.lastSeen);
+    return send(res, 200, { sessions: list });
+  }
+
+  // 踢掉一台设备；id=others 表示「除了当前这台全踢」
+  if (p === "/api/auth/sessions" && method === "DELETE") {
+    const id = String(url.searchParams.get("id") || "").trim();
+    const cur = sha256(Buffer.from(rawToken(req) || ""));
+    if (id === "others") {
+      let n = 0;
+      for (const [k, v] of Object.entries(tokens)) {
+        if (v.userId === user.id && k !== cur) { delete tokens[k]; n += 1; }
+      }
+      await writeJson(F.tokens, tokens);
+      snapshot.markDirty();
+      return send(res, 200, { ok: true, removed: n });
+    }
+    if (!/^[0-9a-f]{8}$/.test(id)) return fail(res, 400, "设备标识不对");
+    const hit = Object.entries(tokens).find(([k, v]) => k.startsWith(id) && v.userId === user.id);
+    if (!hit) return fail(res, 404, "这个设备已经不在了");
+    delete tokens[hit[0]];
+    await writeJson(F.tokens, tokens);
+    snapshot.markDirty();
+    return send(res, 200, { ok: true, self: hit[0] === cur });
+  }
+
+  // ---- 恢复码 ----
+  if (p === "/api/auth/recovery" && method === "GET") {
+    return send(res, 200, {
+      hasRecovery: !!user.recovery,
+      createdAt: user.recovery ? user.recovery.createdAt : 0,
+    });
+  }
+
+  if (p === "/api/auth/recovery" && method === "POST") {
+    // 去掉容易看错的 0/O/1/I/L，抄写不易出错
+    const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    const group = () => Array.from({ length: 4 },
+      () => alphabet[crypto.randomInt(alphabet.length)]).join("");
+    const code = [group(), group(), group(), group()].join("-");
+    const salt = crypto.randomBytes(16).toString("hex");
+    user.recovery = {
+      salt,
+      hash: scrypt(code.replace(/-/g, ""), salt),
+      createdAt: Date.now(),
+    };
+    const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
+    if (email) accounts[email] = user;
+    await writeJson(F.accounts, accounts);
+    snapshot.markDirtySoon();
+    // 明文只在这里出现一次，服务端只存哈希
+    return send(res, 200, { code, createdAt: user.recovery.createdAt });
+  }
+
+  if (p === "/api/auth/recovery" && method === "DELETE") {
+    delete user.recovery;
+    const email = Object.keys(accounts).find((e) => accounts[e].id === user.id) || "";
+    if (email) accounts[email] = user;
+    await writeJson(F.accounts, accounts);
+    snapshot.markDirty();
     return send(res, 200, { ok: true });
   }
 

@@ -95,6 +95,15 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 - 收到 SIGTERM / SIGINT 会尽量补一份再退出
 - 快照里有密码 hash 和令牌，**只走内部鉴权通道，不写日志、不进错误信息**
 
+## 设备与恢复码
+
+- 每台设备的令牌记录带 `device` / `createdAt` / `lastSeen`，设备名由客户端用
+  `x-device-name` 头上报（**百分号编码**，中文电脑名也能过反代）
+- `lastSeen` 只在内存更新，60 秒落一次盘，避免每条请求都写文件
+- 恢复码是 16 位、去掉 `0/O/1/I/L` 的字母数字，形如 `X4N4-QEEF-W4SS-YZHT`；
+  **一次性**，用掉即失效，重新生成会让旧码立刻作废
+- 用恢复码重设密码后，该账号**所有设备下线**
+
 ## 限流
 
 内置一层很粗的按 IP 限流，防止公网被撞库：
@@ -122,6 +131,12 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 | GET | `/api/auth/avatar` | 取头像（gateway 下 302 到签名直链） |
 | PUT | `/api/auth/avatar` | 上传头像（PNG ≤512KB，客户端已裁成 256×256） |
 | DELETE | `/api/auth/avatar` | 移除头像 |
+| GET | `/api/auth/sessions` | 登录设备列表（设备名 / 创建时间 / 最近活跃 / 是否当前） |
+| DELETE | `/api/auth/sessions?id=<8位>` | 踢掉某台设备；`id=others` 表示除当前这台全踢 |
+| GET | `/api/auth/recovery` | 恢复码状态 `{hasRecovery, createdAt}` |
+| POST | `/api/auth/recovery` | 生成恢复码，返回明文（只此一次），服务端存 scrypt 哈希 |
+| DELETE | `/api/auth/recovery` | 移除恢复码 |
+| POST | `/api/auth/recovery/reset` | 用 `{email, code, newPassword}` 重设密码，**不需要登录**；成功后清空恢复码并踢掉所有设备 |
 | POST | `/api/auth/password` | 改密码 `{oldPassword,newPassword}`；成功后作废其它设备令牌，当前设备保留 |
 | GET | `/api/me` | 邮箱、配额、已用字节 |
 | GET | `/api/sync/manifest` | 清单（含 `rev`） |

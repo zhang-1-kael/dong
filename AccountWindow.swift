@@ -1,5 +1,24 @@
 import Cocoa
 
+// MARK: - 闭包按钮
+
+/// `AccountButton` 只认 target/action，设备行里的「退出」需要带着那台设备走，
+/// 用闭包最省事。
+final class ClosureButton: AccountButton {
+    private let fire: () -> Void
+
+    init(title: String, kind: AccountButton.Kind = .quiet, onTap: @escaping () -> Void) {
+        self.fire = onTap
+        super.init(title: title, kind: kind)
+        target = self
+        action = #selector(run)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    @objc private func run() { fire() }
+}
+
 // MARK: - 一行设置
 
 /// 账号窗口里的「标题 —— 值 ›」行。点击整行触发，悬停有淡淡一层底。
@@ -53,7 +72,7 @@ final class AccountRow: NSView {
             chevron.trailingAnchor.constraint(equalTo: trailingAnchor),
             chevron.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -1),
             chevron.widthAnchor.constraint(equalToConstant: showsChevron && clickable ? 10 : 0),
-            valueLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -5),
             valueLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 10),
         ])
@@ -61,6 +80,12 @@ final class AccountRow: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// 值要异步拿到（恢复码状态、设备台数），所以要能事后改
+    func setValue(_ text: String, color: NSColor = Ink.tertiary) {
+        valueLabel.stringValue = text
+        valueLabel.textColor = color
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         if hovered && clickable {
@@ -164,7 +189,7 @@ final class AccountPageController: NSViewController {
     static let width: CGFloat = 400
     static let height: CGFloat = 432
 
-    private enum Page { case auth, profile, edit, password }
+    private enum Page { case auth, profile, edit, password, devices, recovery, reset }
 
     private var page: Page = .auth
     private let contentWidth: CGFloat = 400 - 44
@@ -206,6 +231,27 @@ final class AccountPageController: NSViewController {
     private var pwStatus: NSTextField?
     private var pwSave: AccountButton?
 
+    // 登录设备 / 恢复码
+    private var sessions: [AccountAPI.SessionInfo] = []
+    private var sessionsLoaded = false
+    private var sessionsLoading = false
+    private var sessionsError: String?
+    private var recovery: AccountAPI.RecoveryState?
+    private var recoveryLoaded = false
+    private var recoveryRow: AccountRow?
+    /// 刚生成、还没离开页面的明文恢复码（离开就丢，服务端也只存哈希）
+    private var freshCode: String?
+
+    // 重设密码
+    private var resetEmail: AccountFieldBox?
+    private var resetCode: AccountFieldBox?
+    private var resetPassword: AccountFieldBox?
+    private var resetConfirm: AccountFieldBox?
+    private var resetStatus: NSTextField?
+    private var resetButton: AccountButton?
+    /// 从登录页跳过来时，把已经填好的邮箱带过去
+    private var pendingEmail = ""
+
     // 用量缓存
     private var usedBytes: Int64 = 0
     private var quotaBytes: Int64 = 0
@@ -242,6 +288,9 @@ final class AccountPageController: NSViewController {
             switch p {
             case "edit": page = .edit
             case "password": page = .password
+            case "devices": page = .devices
+            case "recovery": page = .recovery
+            case "reset": page = .reset
             case "profile": page = .profile
             case "auth": page = .auth
             default: break
@@ -257,6 +306,7 @@ final class AccountPageController: NSViewController {
 
     /// 回到主页（子页面的「返回」和保存成功后都走这里）
     @objc private func goProfile() {
+        freshCode = nil
         guard SyncCenter.shared.isLoggedIn else { page = .auth; render(); return }
         page = .profile
         render()
@@ -288,10 +338,14 @@ final class AccountPageController: NSViewController {
         }
 
         switch page {
-        case .auth: buildAuth(into: stack)
+        case .auth:
+            buildAuth(into: stack)
         case .profile: buildProfile(into: stack)
         case .edit: buildEdit(into: stack)
         case .password: buildPassword(into: stack)
+        case .devices: buildDevices(into: stack)
+        case .recovery: buildRecovery(into: stack)
+        case .reset: buildReset(into: stack)
         }
 
         if page == .profile { loadUsage() }
@@ -346,7 +400,8 @@ final class AccountPageController: NSViewController {
         return t
     }
 
-    private func backHeader(_ title: String, in stack: NSStackView) {
+    private func backHeader(_ title: String, in stack: NSStackView,
+                            back action: Selector = #selector(goProfile)) {
         let holder = NSView()
         holder.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(holder)
@@ -356,7 +411,8 @@ final class AccountPageController: NSViewController {
 
         let back = AccountButton(title: "‹ 返回", kind: .quiet)
         back.target = self
-        back.action = #selector(goProfile)
+        back.action = action
+        back.titleAlignment = .left
         back.translatesAutoresizingMaskIntoConstraints = false
         holder.addSubview(back)
         NSLayoutConstraint.activate([
@@ -445,16 +501,43 @@ final class AccountPageController: NSViewController {
         authButton = primary
         stack.setCustomSpacing(10, after: primary)
 
+        // 左边切换注册，右边忘记密码——忘了密码的人就在这一页，别让他再去找
+        let linkRow = NSView()
+        linkRow.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(linkRow)
+        linkRow.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        linkRow.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
         let switcher = AccountButton(title: isRegister ? "已经有账号，去登录" : "没有账号？用邮箱注册",
                                      kind: .quiet)
         switcher.target = self
         switcher.action = #selector(toggleRegister)
         switcher.titleAlignment = .left
-        fullWidth(switcher, in: stack)
-        switcher.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        switcher.translatesAutoresizingMaskIntoConstraints = false
+        linkRow.addSubview(switcher)
         authSwitch = switcher
-        stack.setCustomSpacing(5, after: switcher)
-        stack.setCustomSpacing(5, after: switcher)
+        NSLayoutConstraint.activate([
+            switcher.leadingAnchor.constraint(equalTo: linkRow.leadingAnchor),
+            switcher.centerYAnchor.constraint(equalTo: linkRow.centerYAnchor),
+            switcher.widthAnchor.constraint(equalToConstant: 130),
+            switcher.heightAnchor.constraint(equalToConstant: 24),
+        ])
+
+        let forgot = AccountButton(title: "忘记密码？", kind: .quiet)
+        forgot.target = self
+        forgot.action = #selector(openReset)
+        forgot.titleAlignment = .right
+        forgot.translatesAutoresizingMaskIntoConstraints = false
+        linkRow.addSubview(forgot)
+        NSLayoutConstraint.activate([
+            forgot.trailingAnchor.constraint(equalTo: linkRow.trailingAnchor),
+            forgot.centerYAnchor.constraint(equalTo: linkRow.centerYAnchor),
+            forgot.widthAnchor.constraint(equalToConstant: 80),
+            forgot.heightAnchor.constraint(equalToConstant: 24),
+        ])
+        // 间距必须挂在 linkRow 上：switcher 是 linkRow 的子视图，
+        // 传给 NSStackView.setCustomSpacing 会让 AppKit 在布局里死循环（实测卡死）
+        stack.setCustomSpacing(5, after: linkRow)
 
         let note = text("登录后，这台电脑上的壁纸会并入这个账号", size: 10.5, color: Ink.tertiary)
         note.isHidden = false
@@ -642,15 +725,19 @@ final class AccountPageController: NSViewController {
         fullWidth(secHead, in: stack)
         stack.setCustomSpacing(2, after: secHead)
 
-        let devices = AccountRow(title: "登录设备", value: "即将支持", clickable: false)
+        let devices = AccountRow(title: "登录设备", value: "管理")
+        devices.onTap = { [weak self] in self?.openDevices() }
         fullWidth(devices, in: stack)
 
         let pw = AccountRow(title: "修改密码")
         pw.onTap = { [weak self] in self?.openPassword() }
         fullWidth(pw, in: stack)
 
-        let recovery = AccountRow(title: "恢复码", value: "即将支持", clickable: false, hairline: false)
+        let recovery = AccountRow(title: "恢复码", value: "检查中…", hairline: false)
+        recovery.onTap = { [weak self] in self?.openRecovery() }
+        recoveryRow = recovery
         fullWidth(recovery, in: stack)
+        if !recoveryLoaded { loadRecovery() } else { refreshRecoveryRow() }
 
         let gap = NSView()
         gap.translatesAutoresizingMaskIntoConstraints = false
@@ -784,6 +871,495 @@ final class AccountPageController: NSViewController {
             b.informativeText = note
             b.runModal()
         }
+    }
+
+    // MARK: 重设密码（用恢复码）
+
+    @objc private func openReset() {
+        pendingEmail = (authEmail?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        page = .reset
+        render()
+    }
+
+    @objc private func goAuth() {
+        page = .auth
+        render()
+    }
+
+    private func buildReset(into stack: NSStackView) {
+        backHeader("重设密码", in: stack, back: #selector(goAuth))
+
+        let hint = text("输入邮箱和恢复码，换一个新密码。恢复码用一次就作废。",
+                        size: 11, color: Ink.secondary)
+        hint.maximumNumberOfLines = 0
+        hint.lineBreakMode = .byWordWrapping
+        hint.preferredMaxLayoutWidth = contentWidth
+        fullWidth(hint, in: stack, spacing: 14)
+
+        let email = AccountFieldBox(placeholder: "邮箱")
+        email.field.stringValue = pendingEmail
+        fullWidth(email, in: stack, spacing: 8)
+        resetEmail = email
+
+        let code = AccountFieldBox(placeholder: "恢复码（XXXX-XXXX-XXXX-XXXX）")
+        fullWidth(code, in: stack, spacing: 8)
+        resetCode = code
+
+        let pw = AccountFieldBox(placeholder: "新密码（至少 8 位）", secure: true)
+        fullWidth(pw, in: stack, spacing: 8)
+        resetPassword = pw
+
+        let confirm = AccountFieldBox(placeholder: "再输一次新密码", secure: true)
+        confirm.field.target = self
+        confirm.field.action = #selector(doReset)
+        fullWidth(confirm, in: stack, spacing: 8)
+        resetConfirm = confirm
+
+        let status = text("", size: 11, color: .systemRed)
+        status.maximumNumberOfLines = 0
+        status.lineBreakMode = .byWordWrapping
+        status.preferredMaxLayoutWidth = contentWidth
+        status.isHidden = true
+        fullWidth(status, in: stack, spacing: 4)
+        resetStatus = status
+
+        let save = AccountButton(title: "重设密码")
+        save.target = self
+        save.action = #selector(doReset)
+        fullWidth(save, in: stack)
+        save.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        resetButton = save
+
+        DispatchQueue.main.async {
+            if self.pendingEmail.isEmpty {
+                self.resetEmail?.field.window?.makeFirstResponder(self.resetEmail?.field)
+            } else {
+                self.resetCode?.field.window?.makeFirstResponder(self.resetCode?.field)
+            }
+        }
+    }
+
+    @objc private func doReset() {
+        let email = (resetEmail?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = (resetCode?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let pw = resetPassword?.text ?? ""
+        resetStatus?.isHidden = true
+        guard email.contains("@") else { showResetError("邮箱格式不对"); return }
+        guard code.count >= 12 else { showResetError("恢复码看起来不完整"); return }
+        guard pw.count >= 8 else { showResetError("新密码至少 8 位"); return }
+        guard pw == (resetConfirm?.text ?? "") else {
+            showResetError("两次输入的新密码不一样")
+            return
+        }
+
+        resetButton?.setEnabled(false)
+        resetButton?.updateTitle("重设中…")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.resetPassword(email: email, code: code, newPassword: pw)
+            DispatchQueue.main.async {
+                self.resetButton?.setEnabled(true)
+                self.resetButton?.updateTitle("重设密码")
+                switch r {
+                case .success:
+                    let a = NSAlert()
+                    a.messageText = "密码已重设"
+                    a.informativeText = "所有设备都需要重新登录。恢复码已经用掉，登录后可以再生成一个。"
+                    a.runModal()
+                    self.pendingEmail = email
+                    self.page = .auth
+                    self.isRegister = false
+                    self.render()
+                    self.authEmail?.field.stringValue = email
+                    self.authPassword?.field.window?.makeFirstResponder(self.authPassword?.field)
+                case let .failure(e):
+                    self.showResetError(e.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func showResetError(_ msg: String) {
+        resetStatus?.stringValue = msg
+        resetStatus?.isHidden = false
+    }
+
+    // MARK: 登录设备
+
+    private func openDevices() {
+        guard SyncCenter.shared.isLoggedIn else { return }
+        sessionsLoaded = false
+        sessionsError = nil
+        page = .devices
+        render()
+    }
+
+    private func buildDevices(into stack: NSStackView) {
+        backHeader("登录设备", in: stack)
+
+        let hint = text("这些设备上都登录着这个账号", size: 10.5, color: Ink.tertiary)
+        fullWidth(hint, in: stack, spacing: 10)
+
+        if let err = sessionsError {
+            let t = text("读不到设备列表：\(err)", size: 11, color: .systemOrange)
+            t.maximumNumberOfLines = 0
+            t.lineBreakMode = .byWordWrapping
+            t.preferredMaxLayoutWidth = contentWidth
+            fullWidth(t, in: stack)
+        } else if !sessionsLoaded {
+            fullWidth(text("正在读取…", size: 12, color: Ink.tertiary), in: stack)
+            loadSessions()
+        } else if sessions.isEmpty {
+            fullWidth(text("除了这台，没有别的设备", size: 12, color: Ink.tertiary), in: stack)
+        } else {
+            for (i, item) in sessions.enumerated() {
+                fullWidth(deviceRow(item, last: i == sessions.count - 1), in: stack)
+            }
+        }
+
+        let gap = NSView()
+        gap.translatesAutoresizingMaskIntoConstraints = false
+        stack.addArrangedSubview(gap)
+        gap.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        gap.heightAnchor.constraint(equalToConstant: 14).isActive = true
+
+        let foot = text("看到不认识的设备？先退出它，再改一次密码。", size: 10.5, color: Ink.tertiary)
+        foot.maximumNumberOfLines = 0
+        foot.lineBreakMode = .byWordWrapping
+        foot.preferredMaxLayoutWidth = contentWidth
+        fullWidth(foot, in: stack, spacing: 10)
+
+        let others = sessions.filter { !$0.current }.count
+        let kick = AccountButton(title: others > 0 ? "退出所有其它设备" : "没有其它设备在线", kind: .quiet)
+        kick.isEnabled = others > 0
+        kick.target = self
+        kick.action = #selector(kickOthers)
+        // 文字按钮默认看不出可点，给一圈细边
+        kick.wantsLayer = true
+        kick.layer?.borderWidth = 1
+        kick.layer?.borderColor = Ink.edge.cgColor
+        kick.layer?.cornerRadius = 6
+        fullWidth(kick, in: stack)
+        kick.heightAnchor.constraint(equalToConstant: 28).isActive = true
+    }
+
+    private func deviceRow(_ item: AccountAPI.SessionInfo, last: Bool) -> NSView {
+        let holder = NSView()
+        holder.translatesAutoresizingMaskIntoConstraints = false
+        holder.heightAnchor.constraint(equalToConstant: 46).isActive = true
+
+        let name = text(item.device, size: 12.5)
+        name.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(name)
+
+        let sub = text(item.current ? "当前设备" : "最近活跃 " + Self.relative(item.lastSeen),
+                       size: 10.5,
+                       color: item.current ? .systemGreen : Ink.tertiary)
+        sub.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(sub)
+
+        NSLayoutConstraint.activate([
+            name.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
+            name.topAnchor.constraint(equalTo: holder.topAnchor, constant: 5),
+            name.trailingAnchor.constraint(lessThanOrEqualTo: holder.trailingAnchor, constant: -56),
+            sub.leadingAnchor.constraint(equalTo: name.leadingAnchor),
+            sub.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 1),
+        ])
+
+        if !item.current {
+            let kick = ClosureButton(title: "退出", onTap: { [weak self] in self?.kick(item) })
+            kick.translatesAutoresizingMaskIntoConstraints = false
+            holder.addSubview(kick)
+            NSLayoutConstraint.activate([
+                kick.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
+                kick.centerYAnchor.constraint(equalTo: holder.centerYAnchor),
+                kick.widthAnchor.constraint(equalToConstant: 44),
+                kick.heightAnchor.constraint(equalToConstant: 22),
+            ])
+        }
+
+        if !last {
+            let line = hairline()
+            holder.addSubview(line)
+            NSLayoutConstraint.activate([
+                line.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
+                line.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
+                line.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
+            ])
+        }
+        return holder
+    }
+
+    private func loadSessions() {
+        guard let session = SyncCenter.shared.session, !sessionsLoading else { return }
+        sessionsLoading = true
+        DispatchQueue.global(qos: .utility).async {
+            let r = AccountAPI.sessions(token: session.token)
+            DispatchQueue.main.async {
+                self.sessionsLoading = false
+                self.sessionsLoaded = true
+                switch r {
+                case let .success(list): self.sessions = list; self.sessionsError = nil
+                case let .failure(e): self.sessionsError = e.localizedDescription
+                }
+                if self.page == .devices { self.render() }
+            }
+        }
+    }
+
+    private func kick(_ item: AccountAPI.SessionInfo) {
+        guard let session = SyncCenter.shared.session else { return }
+        let a = NSAlert()
+        a.messageText = "让这台设备退出登录？"
+        a.informativeText = "「\(item.device)」下次打开 App 需要重新登录。"
+        a.addButton(withTitle: "退出登录")
+        a.addButton(withTitle: "取消")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.revokeSession(token: session.token, id: item.id)
+            DispatchQueue.main.async {
+                if case let .failure(e) = r {
+                    self.alert("没踢掉", e.localizedDescription)
+                    return
+                }
+                self.sessionsLoaded = false
+                self.render()
+            }
+        }
+    }
+
+    @objc private func kickOthers() {
+        guard let session = SyncCenter.shared.session else { return }
+        let n = sessions.filter { !$0.current }.count
+        guard n > 0 else { return }
+        let a = NSAlert()
+        a.messageText = "退出其它 \(n) 台设备？"
+        a.informativeText = "这台电脑不受影响。"
+        a.addButton(withTitle: "全部退出")
+        a.addButton(withTitle: "取消")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.revokeSession(token: session.token, id: "others")
+            DispatchQueue.main.async {
+                if case let .failure(e) = r {
+                    self.alert("没踢掉", e.localizedDescription)
+                    return
+                }
+                self.sessionsLoaded = false
+                self.render()
+            }
+        }
+    }
+
+    // MARK: 恢复码
+
+    private func openRecovery() {
+        guard SyncCenter.shared.isLoggedIn else { return }
+        freshCode = nil
+        recoveryLoaded = false
+        page = .recovery
+        render()
+    }
+
+    private func buildRecovery(into stack: NSStackView) {
+        backHeader("恢复码", in: stack)
+        // 调试用：摆拍「刚生成完」的界面（正常流程里只有点了生成才有）
+        if freshCode == nil, let c = ProcessInfo.processInfo.environment["VW_ACCOUNT_FRESHCODE"] {
+            freshCode = c
+        }
+
+        let intro = text("忘了密码时，用「邮箱 + 恢复码」重设。码只显示一次，请抄下来或存进密码管理器。",
+                         size: 11, color: Ink.secondary)
+        intro.maximumNumberOfLines = 0
+        intro.lineBreakMode = .byWordWrapping
+        intro.preferredMaxLayoutWidth = contentWidth
+        fullWidth(intro, in: stack, spacing: 14)
+
+        if let code = freshCode {
+            let box = NSView()
+            box.wantsLayer = true
+            box.layer?.cornerRadius = 8
+            box.layer?.backgroundColor = Ink.fill.cgColor
+            box.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(box)
+            box.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+            box.heightAnchor.constraint(equalToConstant: 46).isActive = true
+
+            let label = NSTextField(labelWithString: code)
+            label.font = .monospacedDigitSystemFont(ofSize: 15, weight: .medium)
+            label.textColor = Ink.primary
+            label.alignment = .center
+            label.isSelectable = true
+            label.translatesAutoresizingMaskIntoConstraints = false
+            box.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            ])
+            stack.setCustomSpacing(10, after: box)
+
+            let copy = AccountButton(title: "复制恢复码")
+            copy.target = self
+            copy.action = #selector(copyCode)
+            fullWidth(copy, in: stack)
+            copy.heightAnchor.constraint(equalToConstant: 34).isActive = true
+            stack.setCustomSpacing(8, after: copy)
+
+            let warn = text("离开这个页面后就看不到了，只能重新生成。", size: 10.5, color: .systemOrange)
+            warn.maximumNumberOfLines = 0
+            warn.lineBreakMode = .byWordWrapping
+            warn.preferredMaxLayoutWidth = contentWidth
+            fullWidth(warn, in: stack)
+            return
+        }
+
+        if !recoveryLoaded {
+            fullWidth(text("正在读取…", size: 12, color: Ink.tertiary), in: stack)
+            loadRecovery()
+            return
+        }
+
+        let has = recovery?.hasRecovery ?? false
+        let stateText: String
+        if recovery == nil {
+            stateText = "读不到恢复码状态，服务端可能还没更新"
+        } else if has {
+            stateText = "已生成于 " + Self.dateText(recovery?.createdAt ?? 0)
+        } else {
+            stateText = "还没有恢复码"
+        }
+        let state = text(stateText, size: 12, color: has ? Ink.primary : .systemOrange)
+        fullWidth(state, in: stack, spacing: 12)
+
+        let primary = AccountButton(title: has ? "重新生成" : "生成恢复码")
+        primary.target = self
+        primary.action = #selector(generateRecovery)
+        fullWidth(primary, in: stack)
+        primary.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        stack.setCustomSpacing(8, after: primary)
+
+        let note = text(has ? "重新生成会让旧码立刻失效。" : "建议现在就生成一个，忘密码时这是唯一出路。",
+                        size: 10.5, color: Ink.tertiary)
+        note.maximumNumberOfLines = 0
+        note.lineBreakMode = .byWordWrapping
+        note.preferredMaxLayoutWidth = contentWidth
+        fullWidth(note, in: stack, spacing: 10)
+
+        if has {
+            let remove = AccountButton(title: "移除恢复码", kind: .quiet)
+            remove.target = self
+            remove.action = #selector(removeRecovery)
+            remove.titleAlignment = .left
+            fullWidth(remove, in: stack)
+            remove.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        }
+    }
+
+    private func loadRecovery() {
+        guard let session = SyncCenter.shared.session, !recoveryLoaded else { return }
+        DispatchQueue.global(qos: .utility).async {
+            let r = AccountAPI.recoveryStatus(token: session.token)
+            DispatchQueue.main.async {
+                self.recoveryLoaded = true
+                if case let .success(st) = r { self.recovery = st }
+                self.refreshRecoveryRow()
+                if self.page == .recovery || self.page == .profile { self.render() }
+            }
+        }
+    }
+
+    private func refreshRecoveryRow() {
+        guard let row = recoveryRow else { return }
+        guard let r = recovery else { row.setValue("检查失败"); return }
+        if r.hasRecovery {
+            row.setValue("已生成")
+        } else {
+            row.setValue("未生成", color: .systemOrange)
+        }
+    }
+
+    @objc private func generateRecovery() {
+        guard let session = SyncCenter.shared.session else { return }
+        if recovery?.hasRecovery == true {
+            let a = NSAlert()
+            a.messageText = "重新生成恢复码？"
+            a.informativeText = "旧的那串会立刻失效。"
+            a.addButton(withTitle: "重新生成")
+            a.addButton(withTitle: "取消")
+            guard a.runModal() == .alertFirstButtonReturn else { return }
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.createRecovery(token: session.token)
+            DispatchQueue.main.async {
+                switch r {
+                case let .success(code):
+                    self.freshCode = code
+                    self.recovery = AccountAPI.RecoveryState(
+                        hasRecovery: true,
+                        createdAt: Int64(Date().timeIntervalSince1970 * 1000))
+                    self.recoveryLoaded = true
+                    self.refreshRecoveryRow()
+                    self.render()
+                case let .failure(e):
+                    self.alert("生成失败", e.localizedDescription)
+                }
+            }
+        }
+    }
+
+    @objc private func removeRecovery() {
+        guard let session = SyncCenter.shared.session else { return }
+        let a = NSAlert()
+        a.messageText = "移除恢复码？"
+        a.informativeText = "移除后忘记密码就没法自己重置了。"
+        a.addButton(withTitle: "移除")
+        a.addButton(withTitle: "取消")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.removeRecovery(token: session.token)
+            DispatchQueue.main.async {
+                switch r {
+                case .success:
+                    self.recovery = AccountAPI.RecoveryState(hasRecovery: false, createdAt: 0)
+                    self.freshCode = nil
+                    self.refreshRecoveryRow()
+                    self.render()
+                case let .failure(e):
+                    self.alert("移除失败", e.localizedDescription)
+                }
+            }
+        }
+    }
+
+    @objc private func copyCode() {
+        guard let code = freshCode else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(code, forType: .string)
+    }
+
+    private func alert(_ title: String, _ message: String) {
+        let a = NSAlert()
+        a.messageText = title
+        a.informativeText = message
+        a.runModal()
+    }
+
+    static func relative(_ ms: Int64) -> String {
+        guard ms > 0 else { return "未知" }
+        let sec = Date().timeIntervalSince1970 - Double(ms) / 1000
+        if sec < 90 { return "刚刚" }
+        if sec < 3600 { return "\(Int(sec / 60)) 分钟前" }
+        if sec < 86400 { return "\(Int(sec / 3600)) 小时前" }
+        return "\(Int(sec / 86400)) 天前"
+    }
+
+    static func dateText(_ ms: Int64) -> String {
+        guard ms > 0 else { return "未知时间" }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy 年 M 月 d 日"
+        return f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
     }
 
     // MARK: 编辑资料

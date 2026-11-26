@@ -96,6 +96,19 @@ enum AccountAPI {
         return URLSession(configuration: c)
     }()
 
+    /// 这台电脑叫什么。设备列表里显示的就是它，登录时随请求头一起报给服务端。
+    static let deviceName: String = {
+        if let n = Host.current().localizedName, !n.isEmpty { return n }
+        return "Mac"
+    }()
+
+    /// 设备名的百分号编码版（只保留 ASCII 安全字符，其余转义）
+    static let encodedDeviceName: String = {
+        let allowed = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        return deviceName.addingPercentEncoding(withAllowedCharacters: allowed) ?? "Mac"
+    }()
+
     private static func request(_ path: String,
                                 method: String = "GET",
                                 token: String? = nil,
@@ -104,6 +117,9 @@ enum AccountAPI {
         var r = URLRequest(url: SyncConfig.url(path))
         r.httpMethod = method
         r.setValue("application/json", forHTTPHeaderField: "accept")
+        // 电脑名可能是中文：HTTP 头只保证 ISO-8859-1，先做百分号编码，
+        // 服务端再解回来，穿反代也不会花。
+        r.setValue(Self.encodedDeviceName, forHTTPHeaderField: "x-device-name")
         if let token { r.setValue("Bearer \(token)", forHTTPHeaderField: "authorization") }
         for (k, v) in headers { r.setValue(v, forHTTPHeaderField: k) }
         if let body {
@@ -247,6 +263,102 @@ enum AccountAPI {
         case let .success((data, code)):
             guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
             return .success(data)
+        }
+    }
+
+    // MARK: 登录设备
+
+    struct SessionInfo {
+        var id: String
+        var device: String
+        var createdAt: Int64
+        var lastSeen: Int64
+        var current: Bool
+    }
+
+    static func sessions(token: String) -> Result<[SessionInfo], AccountError> {
+        switch send(request("/api/auth/sessions", token: token)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            guard let arr = json(data)["sessions"] as? [[String: Any]] else { return .success([]) }
+            let list = arr.map { o in
+                SessionInfo(id: o["id"] as? String ?? "",
+                            device: o["device"] as? String ?? "未知设备",
+                            createdAt: (o["createdAt"] as? NSNumber)?.int64Value ?? 0,
+                            lastSeen: (o["lastSeen"] as? NSNumber)?.int64Value ?? 0,
+                            current: o["current"] as? Bool ?? false)
+            }
+            return .success(list)
+        }
+    }
+
+    /// id 传具体设备，或 "others" 表示除了当前这台全踢。返回踢掉几台。
+    static func revokeSession(token: String, id: String) -> Result<Int, AccountError> {
+        let q = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
+        switch send(request("/api/auth/sessions?id=\(q)", method: "DELETE", token: token)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            let n = (json(data)["removed"] as? NSNumber)?.intValue
+            return .success(n ?? 1)
+        }
+    }
+
+    // MARK: 恢复码
+
+    struct RecoveryState {
+        var hasRecovery: Bool
+        var createdAt: Int64
+    }
+
+    static func recoveryStatus(token: String) -> Result<RecoveryState, AccountError> {
+        switch send(request("/api/auth/recovery", token: token)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            let o = json(data)
+            return .success(RecoveryState(hasRecovery: o["hasRecovery"] as? Bool ?? false,
+                                          createdAt: (o["createdAt"] as? NSNumber)?.int64Value ?? 0))
+        }
+    }
+
+    /// 生成恢复码。明文只在这里返回一次，服务端只存哈希。
+    static func createRecovery(token: String) -> Result<String, AccountError> {
+        switch send(request("/api/auth/recovery", method: "POST", token: token)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            guard let c = json(data)["code"] as? String, !c.isEmpty else { return .failure(.decoding) }
+            return .success(c)
+        }
+    }
+
+    static func removeRecovery(token: String) -> Result<Void, AccountError> {
+        switch send(request("/api/auth/recovery", method: "DELETE", token: token)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            return .success(())
+        }
+    }
+
+    /// 忘了密码时用：邮箱 + 恢复码换新密码。不需要登录。
+    static func resetPassword(email: String, code: String, newPassword: String) -> Result<Void, AccountError> {
+        let body = try? JSONSerialization.data(withJSONObject: [
+            "email": email, "code": code, "newPassword": newPassword,
+        ])
+        switch send(request("/api/auth/recovery/reset", method: "POST", body: body)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            return .success(())
         }
     }
 

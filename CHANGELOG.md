@@ -231,6 +231,19 @@
 > 账号登录 / 云同步 / 自动轮换 等并行任务未完成功能**未编入**。v3.42 已占用服务器版本号，故升 3.43。
 > **DMG**：`dist/Dòng-3.43.dmg`（大小与 sha256 见下方 Released 段）；版本 3.43/65。
 
+### D3 · 修复 GitHub Actions 持续失败（补提交缺失文件 + CI 兼容）— 状态：`已修复（CI 通过）`
+
+- **日期**：2026-11-26
+- **现象**：11-25 12:27 起每次 push 都收到 `Build / 编译验证` 失败邮件，12~21 秒退出。
+- **三层原因**：
+  1. `build.sh` 已提交且引用 `DynamicLockScreen / PerfectLoopInstaller / PlaybackPolicy / Rotation / WebWallpaper`，但这 5 个文件一直未入库；
+  2. 仓库里的 `main.swift` 已调用 `Transcoder.importVideo(autoTrimIntroOutro:)`，而 `Transcoder.swift` 的对应改动未提交（同 `SyncEngine` 那次漏提交）；
+  3. Swift 编译修好后，CI 走到「编译锁屏扩展」时 `zsh build_ext.sh` 找不到脚本，退出码 127。
+- **改动文件**：上述 5 个新文件 + `Transcoder.swift` / `Tuning.swift` / `Panel.swift`；`build.sh` 改为 `[ -f build_ext.sh ]` 才编译锁屏扩展，缺失时打印跳过。
+- **验证**：干净副本（`git archive HEAD` + 补文件，无 `build_ext.sh`）执行 `VW_NO_PRESETS=1 ./build.sh` 退出码 0；GitHub Actions run `45760990230` 结论 **success**。
+- **提交**：`1cc3b33`（补文件）、`96fceb2`（CI 兼容）。
+- **未提交**：`Info.plist` 版本号与十语言 README 改动仍留本地，按约定等统一发版。
+
 ### D2 · Gitee 镜像仓库公开 + README 链接本地化 — 状态：`已上线（文档/仓库，无需发版）`
 
 - **日期**：2026-11-25
