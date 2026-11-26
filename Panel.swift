@@ -1318,6 +1318,10 @@ final class PanelBody: NSView {
         dragged = false
     }
 
+    /// 悬停自动弹出时面板不抢 key window，这里要接下「第一次点击」，
+    /// 否则点「壁纸库」的第一下只会激活窗口、不触发入口。
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDragged(with event: NSEvent) {
         guard maxOffset > 0 else { return }
         var pp = pressPoint
@@ -1408,6 +1412,9 @@ final class MenuPanelController: NSWindowController {
     private var closing = false
     /// 弹出前自己是不是已经在前台：为了打字抢过焦点，收起来时再还回去
     private var activeBeforeShow = true
+    /// 这些屏幕矩形里的点击不算「点在外面」：菜单栏图标本身要交给按钮处理
+    /// （悬停自动弹出后，用户顺手点一下图标不该被这里抢着关掉）
+    private var passthroughRects: [NSRect] = []
 
     init() {
         let win = PanelWindow(
@@ -1468,7 +1475,9 @@ final class MenuPanelController: NSWindowController {
         body.revealThumb(i, data: data)
     }
 
-    func show(relativeTo button: NSStatusBarButton, data: PanelData) {
+    /// focus=false 用于悬停自动弹出：不抢键盘焦点，不打断用户正在别处打的字。
+    /// 真要点输入框时，becomesKeyOnlyIfNeeded 会自己把面板变成 key window。
+    func show(relativeTo button: NSStatusBarButton, data: PanelData, focus: Bool = true) {
         body.data = data
         guard let win = window, let buttonWindow = button.window else { return }
 
@@ -1488,6 +1497,8 @@ final class MenuPanelController: NSWindowController {
         body.tailCenter = min(max(anchor.midX - x, 34), PanelBody.width - 34)
         body.needsDisplay = true
         glass.updateMask(tailCenter: body.tailCenter)
+        // 图标所在的一小块屏幕区域：点它不当作「点外面」
+        passthroughRects = [anchor.insetBy(dx: -3, dy: -3)]
 
         win.setFrame(NSRect(x: x, y: y, width: PanelBody.width, height: PanelBody.height), display: true)
         if ProcessInfo.processInfo.environment["VW_PANEL_DEBUG"] != nil {
@@ -1499,9 +1510,11 @@ final class MenuPanelController: NSWindowController {
         activeBeforeShow = NSApp.isActive
         win.alphaValue = 0
         win.orderFrontRegardless()
-        // 不抢应用焦点，但让面板能接按键（ESC 收起）
-        win.makeKey()
-        win.makeFirstResponder(body)
+        // 不抢应用焦点，但让面板能接按键（ESC 收起）。悬停弹出时连 key 都不抢。
+        if focus {
+            win.makeKey()
+            win.makeFirstResponder(body)
+        }
         body.onCancel = { [weak self] in self?.dismiss() }
         body.startBadge()
         playIn()
@@ -1639,12 +1652,19 @@ final class MenuPanelController: NSWindowController {
                 }
                 return event
             }
-            if !win.frame.contains(NSEvent.mouseLocation) { self.dismiss() }
+            if !win.frame.contains(NSEvent.mouseLocation),
+               !self.isInPassthrough(NSEvent.mouseLocation) { self.dismiss() }
             return event
         }
         monitorGlobal = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
-            [weak self] _ in self?.dismiss()
+            [weak self] _ in
+            guard let self else { return }
+            if !self.isInPassthrough(NSEvent.mouseLocation) { self.dismiss() }
         }
+    }
+
+    private func isInPassthrough(_ p: NSPoint) -> Bool {
+        passthroughRects.contains { $0.contains(p) }
     }
 
     private func removeMonitors() {

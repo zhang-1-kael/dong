@@ -25,6 +25,14 @@ enum Tuning {
         /// 首尾淡化关闭（fade=0）时，是否仍自动用 PerfectLoop 消除循环跳变。
         /// 抖音等短视频首尾本来就接不上，硬切会每圈跳一下；开这个就不用手动去调淡化。
         static let autoSeamless = "autoSeamless"
+        /// 前台应用全屏铺满某块屏时自动暂停壁纸（省电 / 不抢游戏资源）
+        static let pauseOnFullscreen = "pauseOnFullscreen"
+        /// 锁屏 / 息屏时自动暂停壁纸
+        static let pauseOnLock = "pauseOnLock"
+        /// 低电量模式时自动暂停壁纸（注意不是「用电池就停」）
+        static let pauseOnLowBattery = "pauseOnLowBattery"
+        /// 网页壁纸帧率上限：shadertoy 这类 WebGL 页面满帧跑会把 GPU 拉爆
+        static let webFrameCap = "webFrameCap"
     }
 
     static let changed = Notification.Name("VWTuningChanged")
@@ -135,6 +143,52 @@ enum Tuning {
             UserDefaults.standard.set(newValue, forKey: prefix + Key.autoSeamless)
             NotificationCenter.default.post(name: changed, object: nil,
                                             userInfo: ["key": Key.autoSeamless])
+        }
+    }
+
+    // MARK: 自动暂停策略（运行时，只影响播放不影响画面设置）
+
+    /// 这三类开关都默认开：壁纸是背景，前景该独占资源时主动让路。
+    /// 手动关掉某类后，即使条件命中也不暂停；改动经 `changed` 通知让 PlaybackPolicy 立即重判。
+    private static func readBool(_ key: String) -> Bool {
+        let ud = UserDefaults.standard
+        guard ud.object(forKey: prefix + key) != nil else { return true }
+        return ud.bool(forKey: prefix + key)
+    }
+
+    private static func writeBool(_ key: String, _ value: Bool) {
+        UserDefaults.standard.set(value, forKey: prefix + key)
+        NotificationCenter.default.post(name: changed, object: nil, userInfo: ["key": key])
+    }
+
+    /// 前台应用全屏（含全屏游戏）时暂停，退出全屏原地续播
+    static var pauseOnFullscreen: Bool {
+        get { readBool(Key.pauseOnFullscreen) }
+        set { writeBool(Key.pauseOnFullscreen, newValue) }
+    }
+
+    /// 锁屏 / 显示器睡眠时暂停，解锁 / 唤醒续播
+    static var pauseOnLock: Bool {
+        get { readBool(Key.pauseOnLock) }
+        set { writeBool(Key.pauseOnLock, newValue) }
+    }
+
+    /// 低电量模式时暂停；注意不是「用电池就停」，插电与否不参与判定
+    static var pauseOnLowBattery: Bool {
+        get { readBool(Key.pauseOnLowBattery) }
+        set { writeBool(Key.pauseOnLowBattery, newValue) }
+    }
+
+    /// 网页壁纸帧率上限（默认 30）。Shadertoy 这类 WebGL 页面默认按屏幕刷新率满帧渲染，
+    /// 5K 屏上跑在桌面层会把 GPU 拉满、整机发卡；壁纸是背景，30fps 足够。
+    /// 可选 15 / 24 / 30 / 60。
+    static var webFrameCap: Int {
+        get {
+            let v = Int(read(Key.webFrameCap, 30))
+            return [15, 24, 30, 60].contains(v) ? v : 30
+        }
+        set {
+            write(Key.webFrameCap, Double([15, 24, 30, 60].contains(newValue) ? newValue : 30))
         }
     }
 

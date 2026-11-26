@@ -55,12 +55,19 @@ final class Transcoder {
     static let perfectLoopRecommendation =
         "推荐安装 PerfectLoop 插件，循环更顺滑（\(perfectLoopDiskFootprint) / \(perfectLoopMemoryFootprint)）"
 
-    /// 插件下载/安装说明页。用项目已有的 GitHub 仓库（真实稳定），安装包与说明放这里。
-    /// 若日后改到官网下载页，只改这一处即可，三处 UI 文案会跟着变。
-    static let perfectLoopInstallURL = "https://github.com/zhang-1-kael/dong/releases"
-    /// 带下载指引的推荐文案：纯文本环境（拖拽浮层 / 系统文件面板）里直接把地址写出来
+    /// 插件安装包的「直接下载」链接（不是 releases 列表页）。
+    /// 关键：用户点「下载」按钮后必须立即开始下载 zip，绝不能扔到 releases 列表页——
+    /// 那页默认是 App 更新说明，安装包藏在需手动展开的 Assets 区，普通用户根本找不到（2026-11-18 实测踩坑）。
+    /// 用 latest/download 直链会自动指向最新 release 的同名附件；只要每个 release 都带上该附件即可。
+    /// 若日后改到官网下载页，只改这一处即可。
+    static let perfectLoopInstallURL =
+        "https://github.com/zhang-1-kael/dong/releases/latest/download/PerfectLoop-Plugin-Installer.zip"
+    /// 一键安装说明：App 内自动完成，无需用户解压/右键/重启。
+    static let perfectLoopInstallSteps =
+        "点上面按钮自动安装（约 330 MB 磁盘 / 340 MB 峰值内存），装完立即生效，无需重启"
+    /// 带操作指引的推荐文案：纯文本环境（拖拽浮层 / 系统文件面板）里告诉用户怎么装
     static let perfectLoopRecommendationWithLink =
-        perfectLoopRecommendation + "\n安装说明：github.com/zhang-1-kael/dong/releases"
+        perfectLoopRecommendation + "\n在「画面微调」面板点『一键安装』，装完立即生效"
 
     /// PerfectLoop 运行时：找到一个「能跑通依赖」的 python3 + 运行器。
     /// 懒加载并缓存；找不到（用户没装插件，或装的 python 缺 numpy / opencv / scikit-image）则为 nil，
@@ -108,6 +115,9 @@ final class Transcoder {
 
     /// 运行时是否可用（存在能跑依赖的 python + 运行器）。
     static func perfectLoopAvailable() -> Bool { perfectLoopRuntime != nil }
+
+    /// 插件装好后调用：清掉懒加载缓存，让下次转码重新发现新装的插件，无需重启 App。
+    static func invalidatePerfectLoopRuntime() { _perfectLoopRuntime = nil }
 
     // MARK: 探测
 
@@ -172,6 +182,14 @@ final class Transcoder {
         guard content.count > 12 else { return nil }
         let baseline = content[content.count / 2]
 
+        // 修复（2026-11-22 用户反馈「本地视频拖进来只截取了一部分」）：
+        // 整段素材本身就很"安静"时（风景、夜景、雪景、缓慢渐变/延时），帧差中位数只有 0.2~0.5，
+        // 根本不存在「正片 + 静止片尾卡」这种结构。旧逻辑的绝对下限 still=max(baseline*0.12, 0.25)
+        // 比这些正常画面的帧差还高，于是把结尾一大段正常内容判成「静止片尾」裁掉，
+        // 最长能裁走 40% 时长 —— 用户看到的就是「只截了一部分」。
+        // 这里加一道保护：基准运动量太低就整体放弃检测，宁可留着也不误裁。
+        guard baseline >= 1.0 else { return nil }
+
         func meanMotion(after t: Double) -> Double {
             // 不含切点自身那一帧（那一帧的帧差是两个场景的差，数值巨大）
             let tail = samples.filter { $0.t > t + 0.001 }.map { $0.v }
@@ -187,14 +205,15 @@ final class Transcoder {
         }
         if let c = cut {
             let removed = duration - c
-            if removed >= 1.0, removed <= max(4.0, duration * 0.4),
-               meanMotion(after: c) <= max(baseline * 0.8, 2.5) {
+            if removed >= 1.0, removed <= min(8.0, max(4.0, duration * 0.25)),
+               meanMotion(after: c) <= max(baseline * 0.5, 1.5) {
                 return (c, removed)
             }
         }
 
         // ── 信号 B：结尾一段几乎全静止（淡出到黑屏 / 静态 logo） ──
-        let still = max(baseline * 0.12, 0.25)
+        // 阈值收紧：绝对下限从 0.25 降到 0.08，相对值 0.12→0.15，只认「真正定住」的画面。
+        let still = max(baseline * 0.15, 0.08)
         var idx = samples.count - 1
         var quietStart: Double?
         while idx >= 0, samples[idx].v <= still {
@@ -203,7 +222,8 @@ final class Transcoder {
         }
         if let qs = quietStart {
             let removed = duration - qs
-            if removed >= 1.2, removed <= max(4.0, duration * 0.4) {
+            // 上限从 duration*0.4 收到 min(8s, duration*0.25)：片尾卡通常几秒，不该吞掉大段正片
+            if removed >= 1.2, removed <= min(8.0, max(3.0, duration * 0.25)) {
                 return (qs, removed)
             }
         }
@@ -880,7 +900,11 @@ final class Transcoder {
         return (tmp, w, h)
     }
 
-    func importVideo(source: URL, into libraryDir: URL) throws -> URL {
+    /// - Parameter autoTrimIntroOutro: 是否自动检测并裁掉「片头介绍 / 片尾卡」。
+    ///   用户自己拖进来的本地视频一律为 false —— 他的片头片尾就是内容的一部分，
+    ///   算法没法区分「正常的开场/静止收尾」和「作者的片头介绍/片尾卡」，误裁就是「只截了一部分」。
+    ///   网络下载的素材（常带作者片头/水印/片尾卡）保持 true。
+    func importVideo(source: URL, into libraryDir: URL, autoTrimIntroOutro: Bool = true) throws -> URL {
         guard let info = Self.probe(source) else {
             throw NSError(domain: "Transcoder", code: 2,
                           userInfo: [NSLocalizedDescriptionKey:
@@ -909,12 +933,13 @@ final class Transcoder {
 
         var tail = info.duration
         onStage?("检查片头片尾…")
-        if let trim = detectEndCard(url: source, duration: info.duration) {
+        if autoTrimIntroOutro, let trim = detectEndCard(url: source, duration: info.duration) {
             tail = trim.end
             lastTrimmed = trim.removed
         }
         var head = 0.0
-        if let h = detectHead(url: source, duration: tail) {
+        // 片头检测同样只在「网络素材」时启用；本地导入保持原样（用户反馈过被裁掉开头 7 秒）
+        if autoTrimIntroOutro, let h = detectHead(url: source, duration: tail) {
             head = h
             lastHeadTrimmed = h
         }
