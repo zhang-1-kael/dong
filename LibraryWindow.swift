@@ -2807,9 +2807,8 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         // 深浅色切换搬进了设置弹层（用户要求：这里留给个人信息）。
         let avatarPill = AvatarPill()
         self.avatarPill = avatarPill
-        avatarPill.onTap = { [weak self, weak avatarPill] in
-            guard let self, let anchor = avatarPill else { return }
-            self.toggleAccount(from: anchor)
+        avatarPill.onTap = { [weak self] in
+            self?.toggleAccount()
         }
 
         avatarPill.onHoverChange = { [weak self, weak avatarPill] on in
@@ -3011,7 +3010,8 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var settingsPill: SettingPill?
     private var avatarPill: AvatarPill?
     private var settingsDarkSwitch: NSSwitch?
-    private var accountPop: NSPopover?
+    /// 账号窗口（固定 400×432），首次点开时才创建，关掉就释放内容视图
+    private var accountWC: AccountWindowController?
     /// 设置弹层（匿名统计开关 + 检查更新）
     private var settingsPop: NSPopover?
     /// 画面微调弹层
@@ -3776,12 +3776,11 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     /// 把 Analytics / Updater 的当前状态画到弹层上
     // MARK: 账号
 
-    /// 点底栏头像：弹账号面板（未登录是登录表单，已登录是个人信息 + 同步状态）
-    private func toggleAccount(from anchor: NSView) {
-        if let pop = accountPop, pop.isShown {
-            pop.performClose(nil)
-            return
-        }
+    /// 调试用：命令行里直接把账号窗口打开（量内存、肉眼核对都用得上）
+    func debugOpenAccount() { toggleAccount() }
+
+    /// 点底栏头像：打开账号窗口。已经是同一个窗口，重复点就把它提到前面。
+    private func toggleAccount() {
         guard SyncConfig.isConfigured || SyncCenter.shared.isLoggedIn else {
             let a = NSAlert()
             a.messageText = "同步服务器还没配置"
@@ -3789,15 +3788,10 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             a.runModal()
             return
         }
-        let vc = AccountViewController()
-        let pop = NSPopover()
-        vc.hostPopover = pop
-        pop.behavior = .transient
-        pop.animates = true
-        pop.contentViewController = vc
-        pop.delegate = self
-        pop.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
-        accountPop = pop
+        if accountWC == nil {
+            accountWC = AccountWindowController()
+        }
+        accountWC?.present(near: window)
         avatarPill?.refresh()
     }
 

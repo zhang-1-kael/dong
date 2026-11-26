@@ -1,3 +1,186 @@
+### F21.19 · 账号弹层改成紧凑窗口（400×432）+ 清掉烂尾代码 — 状态：`已装机，待统一发版`
+
+- **日期**：2026-11-26
+- **用户要求**：「按这版开工」；窗口不能占太多位置、要简洁；旧登录程序烂尾的部分顺手清理。
+- **形态变化**：`NSPopover`（316pt 自适应高度）→ **独立窗口 400×432 固定**，不可拉伸。
+  - 无侧栏、无标签页，单页三区（同步 / 账号安全 / 账号）
+  - 只留账号本身要用的东西；深色模式与统计开关**仍留在齿轮弹层**，不重复搬
+  - 登录表单在窗口里垂直居中；编辑资料/修改密码用「‹ 返回」回到主页
+- **新增 `AccountWindow.swift`**：`AccountWindowController`（贴主窗口右下角、夹在屏幕内、关窗不销毁控制器）
+  + `AccountPageController`（auth / profile / edit / password 四页）+ `AccountRow`（32pt 行，悬停高亮）
+- **新增 `AccountUI.swift`**：把 `AvatarPill` / `AvatarView` / `PasteableSecureField` / `AccountFieldBox` /
+  `AccountButton` / `UsageBar` 从旧文件抽出来，窗口和底栏共用
+- **删除**：`AccountPopover.swift`（含旧的 `AccountViewController`、`hostPopover`、`resize()` 那套弹层逻辑）；
+  `LibraryWindow` 的 `accountPop`、`NSPopoverDelegate` 上账号相关用法一并清掉
+- **顺手清理的重复代码**：`main.swift` 里 `VW_SYNC_ONCE` 有 3 份、`VW_ACCOUNT_SHOT` 有 2 份，合并为各 1 份
+- **修掉的两个显示 bug**：
+  1. `AccountFieldBox` 初始化没清 `stringValue`，密码框会残留自动填充的字符（截图里显示成两个黑点）
+  2. `UsageBar` 用量为 0 时仍画 2% 的桩，看着像一条橙色故障点；现在 0 就不画
+- **交互细节**：文字按钮支持左对齐（表单里的链接与字段左边缘对齐）；同步中按钮变灰显示「同步中…」，
+  进度显示「42% · 186 MB / 443 MB · 第 7/22 张」
+- **设备列表 / 恢复码**：行已就位，值显示「即将支持」——对应接口还没做（原计划的第二段）
+- **内存实测**（`footprint`，同一二进制）：
+  | 状态 | phys_footprint |
+  |---|---|
+  | 只开壁纸库窗口 | 37 MB |
+  | 库窗口 + 账号窗口 | **39 MB** |
+  | 差值 | **+2 MB**（比预估的 5 MB 更省） |
+- **验证**：`swiftc` 全量 0 error；`build.sh` 通过；五个页面截图逐张核对（登录 / 主页 / 同步中 / 编辑资料 / 改密码）
+- **调试钩子**：`VW_ACCOUNT_OPEN=1`（启动即开窗，用于量内存和肉眼核对）、
+  `VW_ACCOUNT_PAGE=auth|profile|edit|password`、`VW_ACCOUNT_SHOT=/tmp/x.png`
+- **版本号未动**（3.43/65），按约定等用户统一发版
+
+### F21.18 · 账号功能按需求逐条补齐 — 状态：`已装机（aa6b4bc）`
+
+- **日期**：2026-11-25
+- **用户 5 条要求**：个人账号 / 新用户并入本地壁纸 / 退出不删只存 / 头像-密码-名字 / 自查
+- **本轮修掉的 5 个问题**：
+  1. 退出登录**删除**本机壁纸 → 改为移入 `library-cache/<账号>/`（今天数据丢失的根因）
+  2. 云端清单只在全部传完才写 → **每传成功一张就 PUT 一次**
+  3. 同步状态所有账号共用 → 按账号分开 `sync-state-<账号>.json`，避免跨账号误写墓碑
+  4. 新用户注册时本地壁纸被「收起」→ 增加特例：从「未登录」进空账号 = **并入**
+  5. `assets.json` 丢失后对象永久 404 → 启动时按对象列表**自愈**重建映射
+- **退出提示**：若有未传完的，弹窗说明「还有 N 张没传完，已保存在本机，下次登录接着传」
+- **验证**：`LibraryOwner` 六步演练（并入 / 退出收起 / 重新登录回填 / 换账号）全部符合预期；
+  `swiftc` 全量零错误；已装机
+- **文档**：`Dòng账号功能-完成度自查.md`（五条对照 + 限制 + 官网配合项）
+### F21.17 · 线上部署 220743b 生效，头像/昵称/快照全通 — 状态：`已验证`
+
+- **日期**：2026-11-25
+- **官网侧部署**：`220743b`（零配置），另附生产日志证明「每次部署=新容器」，20:24:52 / 20:26:20
+  两次容器重建都走成功恢复了分支（`已从快照恢复 2 个文件`）——我 20:26 那次 401 是撞上重建瞬间。
+- **线上实测（不是本地 mock）**：
+
+| # | 用例 | 结果 |
+|---|---|---|
+| 1 | `/healthz` → `snapDetail.lastRestore` | `{restored:true, files:2}` ✅ |
+| 2 | `/healthz` → `snapDetail.lastPush` | `{ok:true, key:"sync-snapshots/…"}` ✅ 写入 2 秒内推送 |
+| 3 | `GET /api/auth/profile` | 200，返回 email/displayName/hasAvatar ✅ |
+| 4 | `PUT /api/auth/profile` 改昵称 | 200 ✅ |
+| 5 | `PUT /api/auth/avatar` 传头像 | 200 ✅ |
+| 6 | `GET /api/auth/avatar` | 302 → 对象存储，**sha256 与源文件一致** ✅ |
+| 7 | 老账号登录 | 200，userId `f1804b58…` 未变 ✅ |
+
+- **结论**：数据持久化这条线闭环了——容器每次重建都会恢复，写入 2 秒内落快照。
+### F21.16 · 上传按字节显示进度 + 卡死看门狗 — 状态：`已装机`
+
+- **日期**：2026-11-25
+- **用户反馈**：388MB / 8 张，界面一直停在「0% · 0 MB · 第 1/8 张」，看不出是在传还是卡死。
+- **原因**：进度只在**每张文件传完后**更新，单张 300MB 上传期间界面完全不动。
+- **改法**：
+  - `AccountAPI.upload` 改用带 delegate 的 URLSession（`didSendBodyData`），拿到已发送字节实时回报
+  - `SyncEngine.emit(_:extra:)` 支持「在途字节」，进度条按字节走；每涨 1% 才刷一次界面
+  - `UploadSink` 加看门狗：**120 秒没有任何字节推进**就取消任务并返回「上传卡住了」，让同步层重试，
+    而不是傻等 1 小时超时
+- **验证**：编译通过，装机；进度文案与百分比随字节变化（此前 0% 恒定）。
+### F21.15 · 修弹层切页后被裁顶（改头像点不到） — 状态：`已装机`
+
+- **日期**：2026-11-25
+- **现象**（用户截图）：点「改密码 / 编辑资料」后，页面变高了，但弹层还是原来「已登录主页」的高度，
+  **内容被裁在顶部**——标题没了，编辑页的头像整个在可视区外，等于没法改头像。
+- **原因**：`resize()` 只更新了 `preferredContentSize`。弹层已经显示出来之后，
+  这个属性不会让 NSPopover 重排窗口，多出来的高度就被裁掉（裁剪方向朝上）。
+- **修法**：给 `AccountViewController` 一个 `weak hostPopover`，切换页面时直接设
+  `pop.contentSize`；不在弹层里时退回 `view.window?.setContentSize`。
+  由 `LibraryWindowController.toggleAccount` 注入 popover 引用。
+- **顺带**：确认编辑页独立渲染正常（标题 / 76pt 头像 / 昵称 / 保存 / 取消），
+  头像点击回调 `AvatarView.onTap → pickAvatar()` 正常。
+### F21.14 · 壁纸库按账号隔离（登录只看账号的、退出不留痕迹） — 状态：`代码已 push（220743b），待部署`
+
+- **日期**：2026-11-25
+- **用户规则**：
+  1. 登录后只显示该账号里的壁纸；账号为空则把本地现有壁纸并入该账号。
+  2. 退出登录后，本机不能再显示该账号的壁纸（别人登过你账号、退出后还能看到 = 不可接受）。
+- **实现**（新增 `LibraryOwner.swift`）：目录切换，不复制
+  - `wallpapers/` 活动库；`library-cache/<owner>/` 非活动库；`library-owner.json` 记归属
+  - 登录（账号非空）：当前库整体移入 `cache/<previous>`，再把 `cache/<该账号>` 换出来
+  - 登录（账号为空）：只改归属，文件不动，随后同步上传（= 并入）
+  - 退出：**删除活动库里的账号壁纸**（云端有副本），再还原 `cache/anonymous`
+  - 切库期间 `SyncCenter.isSwitchingLibrary` 挡住同步，避免把不属于该账号的本地壁纸传上去
+- **验证（独立 harness，`VW_SUPPORT_DIR` 隔离）**：
+  匿名 3 张 → 登录非空账号（本地收起 3 / 活动 0）→ 拉到 2 张 → 退出（移除 2 / 还原 3）→
+  登录空账号（并入 3，归属变更）→ 退出（移除 3，匿名库 0）。两条规则都成立。
+- **需要用户知道的副作用**：如果账号是空的、把本地壁纸并入了，那退出登录后本地库会变空
+  （这些壁纸已属于该账号，重新登录会拉回来）。
+- **⚠️ 同批提交还包含快照提速**（`snapshot.js`）：
+  - 账号被清第 5 次（`287d0a03…` → `f1804b58…`，gateway 已开的情况下），
+    说明平台的 `/tmp` 可能是**每次冷启动都全新的**，10 分钟一轮的快照根本来不及
+  - `markDirty()` 改为 **2 秒防抖推送**，安全网 5 分钟，保留 40 份
+  - `/healthz` 增加 `snapDetail`（`lastPush.ok/key/error`、`lastRestore.reason`），远程就能诊断
+### F21.13 · 新账号注册后立刻快照 — 状态：`待官网部署`
+
+- **日期**：2026-11-25
+- **起因**：用户用 `12345678` 登录失败。查证：注册返回 200 + 全新 userId
+  （`33a5ebcb…` → `287d0a03…`），**账号又被清了一次**。这次的原因可解释——
+  该账号建于 18:38，而 gateway + 快照是 19:56 才生效的，之前没有快照可恢复。
+- **顺带发现的窗口**：注册后要等定时器（最长 10 分钟）才推快照，这期间清盘仍会丢新账号。
+- **处理**：`snapshot.markDirtySoon()`——注册成功标脏后 **3 秒**内补推一份；
+  其余写操作仍走 10 分钟定时器，避免频繁上传。
+- **验证**：注册 → 5 秒内云端出现 `sync-snapshots/…` → 立刻删掉整个 DATA_DIR → 重启 →
+  日志 `已从快照恢复 2 个文件` → **原邮箱原密码登录 200**。
+- **用户账号**：已重建并把密码改回 `12345678`（userId `287d0a03…`），当前可正常登录。
+### F21.12 · 个人资料：昵称 + 头像 — 状态：`客户端已装，待官网部署 server.js`
+
+- **日期**：2026-11-25
+- **用户要求**：点开账号后要有个「个人主页」，能改头像和名字。
+- **服务端**（`server.js`）：
+  - `GET/PUT /api/auth/profile`（昵称 ≤20 字）、`GET/PUT/DELETE /api/auth/avatar`
+  - **接口放在 `/api/auth/` 下是有意的**：实测 `/api/profile` 会落到官网自己的 404 页面
+    （反代只转发 `/api/auth/*`、`/api/sync/*`、`/api/me`），放这里就不用让官网再加路由
+  - 头像借用存储层，固定 assetId `__avatar__`；gateway 下走对象存储 + 302 直链
+- **客户端**：
+  - 账号面板新增「编辑资料」页：点头像选图（`NSOpenPanel`，自动裁成正方形 + 缩到 256×256 PNG）、
+    昵称输入框、保存 / 取消 / 移除头像
+  - 面板头像与**底栏头像**都显示自定义图片，取不到时回退首字母渐变
+  - 主按钮和三个文字入口改成两行（原来四个挤一行会被压掉）
+- **验证（本地假网关）**：昵称 200 / 超长 400；头像上传 200 → 302 下载 **sha256 一致**；
+  `hasAvatar` 状态正确；删除后回到 false。
+- **仓库**：`480cb7f` + `831903f`（补交漏掉的 `SyncEngine.swift`，之前漏提会让仓库编译失败）
+- **待办**：官网再部署一次 `server.js`（本次不需要改反代路由）
+### F21.11 · 线上发布后验证全过 + 重出 3.43 包 — 状态：`待上传 DMG / 待双设备验证`
+
+- **日期**：2026-11-25
+- **官网侧已完成**：snapshot 动作、`sync-snapshots/` 在 list/url/object 放行、重新发布
+- **线上验证（真实接口，非本地）**：
+
+| # | 用例 | 结果 |
+|---|---|---|
+| 1 | `/healthz` | `{"storage":"gateway","snapshot":"on"}` ✅ |
+| 2 | 改密码接口存在 | `400 新密码至少 8 位`（此前 404）✅ |
+| 3 | 旧密码错 | 401 ✅ |
+| 4 | 改密码成功 | 200 ✅ |
+| 5 | 旧密码登录 | 401 ✅ |
+| 6 | 新密码登录 | 200 ✅ |
+| 7 | 发起改密码的那台设备令牌 | 仍 200 ✅ |
+| 8 | 另一台设备令牌 | 401 ✅ |
+
+- **新包**：`dist/Dòng-3.43.dmg`，size `62001897`，
+  sha256 `870ec6cdc3e08465c63a84ce029aff0e3992b4df48179c344f8d81a2635e4823`
+  （含改密码界面、密码框粘贴、进度条与头像进度环；上一版 3.43 包缺这些）
+- **待办**：上传 DMG + 更新线上版本元数据（用户手动）；双设备验证；
+  线上清盘恢复确认（需官网侧配合删 `/tmp/dong-sync/data`，本地已验过同一条代码路径）
+### F21.10 · 数据快照 + 自动恢复（B 方案） — 状态：`代码已 push（38a7ae2），待官网加快照路由`
+
+- **日期**：2026-11-25
+- **背景**：官网侧确认平台没有持久卷、也没有明文 AK/SK，B 方案（我做快照）成为唯一选择；
+  根因是他们 `/tmp` 被定期清理导致「同邮箱三次注册三个 userId」。
+- **新增 `sync-server/snapshot.js`**：
+  - 打包 `DATA_DIR` 里的记账文件（跳过任何 `assets/` 与 `locks`，壁纸本体不进快照），gzip 后
+    PUT 到网关 `/api/sync-storage/snapshot?key=sync-snapshots/<ts>.json.gz`
+  - 写账号 / 令牌 / 清单 / 壁纸后 `markDirty()`，定时器（默认 10 分钟）只在有改动时上传；
+    启动 30 秒后强制补一份；`SIGTERM/SIGINT` 退出前尽量 flush
+  - **启动恢复**：本地缺 `accounts.json` 才拉最近一份解包；本地有数据绝不覆盖
+  - 保留最近 12 份，推新删旧（复用 `list` + `object DELETE`）
+  - 快照含密码 hash 与令牌：不写日志、不进错误信息、只走内部鉴权
+- **`storage.js`** 导出 `gwJSON / gwPutBuffer / fetchURL` 供快照复用
+- **`/healthz`** 增加 `snapshot: "on|off"`
+- **验证（本地假网关，扩展了 snapshot 动作与命名空间放行）**：
+  1. gateway 模式启动 → `healthz` 显示 `storage: gateway, snapshot: on`
+  2. 注册 + 上传 300KB + 写清单 → 30 秒后自动推送快照（云端出现 `sync-snapshots/…`）
+  3. **删掉整个 DATA_DIR 模拟平台清盘** → 重启 → 自动恢复 4 个文件（accounts/tokens/manifest/assets）
+  4. 用原密码登录 200、userId 不变；清单 rev/条目完整；壁纸经 302 直链下载 **sha256 一致**
+- **待官网**：加 `PUT /api/sync-storage/snapshot`（内部鉴权、写 `sync-snapshots/`），并让
+  `list` / `url` / `object` 对该命名空间放行（恢复与保留策略要用）
 # Dòng 改动台账（待合并发版）
 
 > **约定（每个任务先读这段）**
@@ -35,6 +218,489 @@
 > **DMG**：`dist/Dòng-3.40.dmg`，size `61541183`，sha256 `b4426e65744c2cbfc46ef64269e715385f471f906e5bba3e8413d4d9a3532c74`，
 > `hdiutil verify` 通过；内 App 版本 3.40/62、bundle id `com.zhanghangshuo.dong`、内置 ffmpeg + yt-dlp、无 PerfectLoop。
 > 签名仍为 **ad-hoc**。版本号 3.39 → 3.40 已同步十语言 README；F1–F9 及 F5.5/F5.6/F10/F11 条目保留作历史记录。
+>
+> ✅ **2026-11-20 发布 v3.41 / build 63**（已登记官网更新服务器，latest=3.41 / file_size 61569855）：下方 F13（插件 App 内一键安装）、
+> F14 / F14.2（自动暂停策略 + 静态果冻状态）、F15（网页 / 流媒体壁纸）、F16（图片直链识别）、
+> F17（菜单栏图标悬停展开）、F18（下载改直链）、F19（壁纸重命名）全部随此版发出。
+> F14.1（橙色暂停符号）已被 F14.2 撤销，仅为历史记录。
+> 编号说明：F11/F12 曾被多任务并行重复占用，本次已把新增条目重编为 **F17/F18/F19**；原「F11 底栏图标」随 v3.40 发出。
+>
+> ✅ **2026-11-23 v3.42 / build 64（已登记官网服务器 file_size 61569988，但该包是含未完成新功能、且不含片头修复的版本，勿再分发）**。
+>
+> ✅ **2026-11-24 发布 v3.43 / build 65**：**只含截断修复**（F20 片尾 + F20.1 参数原样 + F20.2 片头），
+> 账号登录 / 云同步 / 自动轮换 等并行任务未完成功能**未编入**。v3.42 已占用服务器版本号，故升 3.43。
+> **DMG**：`dist/Dòng-3.43.dmg`（大小与 sha256 见下方 Released 段）；版本 3.43/65。
+
+### D2 · Gitee 镜像仓库公开 + README 链接本地化 — 状态：`已上线（文档/仓库，无需发版）`
+
+- **日期**：2026-11-25
+- **目标**：国内访问入口，GitHub 仓库 `zhang-1-kael/dong` 原样镜像到 Gitee `dong-is-good/dong`。
+- **改动文件**：仅在 Gitee 独立副本提交 `README*.md`（10 份）；**本地工作区与 GitHub 仓库均未改动**。
+- **行为变化**：
+  - Gitee 仓库已由私有改为**公开**（用户完成第三方账号绑定后 API PATCH 生效，匿名 GET 返回 200）。
+  - `main` + 6 个标签（v3.31/v3.36/v3.37/v3.38/v3.39/v3.40）全部镜像；Gitee 独有提交 `c0c61cc` 把徽章/仓库地址/`git clone` 链接改为 `https://gitee.com/dong-is-good/dong`。
+  - release 下载徽章仍指向 GitHub（安装包资产只在 GitHub Release，Gitee 只存源码）。
+- **验证结果**：匿名 API `repos/dong-is-good/dong` 返回 `private:false`；匿名内容接口 README 含 7 处 Gitee 链接、clone 行指向 Gitee；`git ls-remote` 匿名可读 HEAD `c0c61cc` 与 tag `v3.40`。
+- **状态**：令牌文件 `/tmp/gitee_token` 已 shred 删除；后续同步若再 `push --mirror` 会覆盖 Gitee 独有提交，需改用普通 push 或先合并。
+- **仓库地址**：https://gitee.com/dong-is-good/dong
+
+### F23 · 锁屏动态壁纸（集成进 Dòng）— 状态：`已验证可行 / 注册不稳定，默认关闭`
+
+- **日期**：2026-11-24（2026-11-25 回退开关）
+- **结论**：功能链路本身跑通过（用户实测锁屏持续播放、桌面静止），但**扩展注册在 macOS 26.5.1 上无法稳定重建**，
+  当前默认关闭，代码保留待后续解决注册问题。
+- **回退原因（踩了三次）**：
+  1. ExtensionKit 的注册记录在系统里是隐式的：只有 App 在 `/Applications`、且系统扫描过它的 `Contents/Extensions/` 才会写入。
+     重启后不会自动重建，`lsregister -f`、`killall WallpaperAgent`、把 appex 放到 `~/Library/ExtensionKit/Extensions/` 都无效。
+  2. 只要 `build/` 目录里还有一份同名 App，系统会优先注册 build 那份；删掉它之后注册记录直接失效，
+     壁纸会回退到已删除的旧 provider（表现为黑屏或静态图）。
+  3. 条目 id 必须固定：早期每次部署生成新 UUID，系统 Store 里记的还是旧 id，扩展找不到就 fallback 播容器里剩下的视频，
+     表现是「锁屏和桌面不是同一个」。已改为固定目录 `D0D00000-0000-4000-8000-000000000001` + 固定文件名 `lock.mp4`。
+- **回退后状态**：`dynamicLockScreen=false`，容器视频清空，用户扩展目录的 appex 已移除，
+  桌面与锁屏都恢复到 Dòng 的静态帧（`com.apple.wallpaper.choice.image`），与原链路一致。
+- **若要重新启用**：打开开关 → 部署 → 去「设置 → 墙纸 → Dòng」选一次；
+  注意 `Desktop` 和 `Idle` 要分别指向它（只设桌面的话锁屏还是旧壁纸）。
+
+#### 实现细节（保留供后续参考）
+
+
+- **目标**：锁屏播放当前视频，同时**不改变**桌面渲染方式与任何现有功能。
+- **架构**：桌面 → 主程序自绘窗口（原链路，未改）；锁屏 → 系统 wallpaper extension 播放。
+  extension 的 `PlaybackPolicy` 在 `alwaysPauseDesktop = true` 时桌面暂停、只在 `presentationMode == locked` 渲染，
+  因此两边共存、不会重复解码。
+- **新增文件**：
+  - `DongWallpaperExt/`（扩展源码，基于 Phosphene fork，MIT；bundle id `com.zhanghangshuo.dong.lockscreen`，
+    选择器分组名「Dòng — 视频壁纸」）
+  - `Modules/WallpaperExtensionKit.swiftmodule/`（私有框架的 swiftinterface，编译用）
+  - `build_ext.sh`（编译 appex / 写 Info.plist+entitlements / ad-hoc 签名 / 嵌入 App）
+  - `DynamicLockScreen.swift`（主程序侧：部署视频到扩展沙盒容器、写 prefs、判断系统壁纸是否已选中、清理）
+- **改动文件**：
+  - `main.swift`：`pushLockScreen()` 在 `DynamicLockScreen.isEnabled` 时改为部署到扩展并**跳过** `setDesktopImageURL`
+    （否则会把用户在系统设置里选中的扩展壁纸覆盖成静态帧）；新增 `setDynamicLock` / `guideDynamicLockScreen`。
+  - `LibraryWindow.swift`：设置面板「自动暂停」分组新增「锁屏动态播放（视频）」开关 + delegate 方法。
+  - `build.sh`：编译文件列表加 `DynamicLockScreen.swift`；编译后调用 `build_ext.sh` 并把 appex 嵌入
+    `Contents/Extensions/`；签名改为先签内层扩展（带沙盒 entitlement）再签外层 App。
+- **关键前提（必须知道）**：
+  1. 系统壁纸必须由用户在「设置 → 墙纸 → Dòng」里**手动选一次**，代码设不了。
+  2. 扩展是沙盒进程，读不到 `~/Library/Application Support`；视频由主程序复制到
+     `~/Library/Containers/com.zhanghangshuo.dong.lockscreen/Data/Documents/videos/<uuid>/`。
+  3. 换壁纸后系统可能仍指向旧条目，锁屏不动时回设置里重选一次即可。
+  4. **`alwaysPauseDesktop` 必须为 false**。实测：锁屏瞬间系统先发 `mode: locked`，
+     随即又切回 `mode: default`（中途还夹一次 `activity: suspended`）。
+     若 `alwaysPauseDesktop=true`，default 下一律暂停 —— 表现就是「锁屏播一小会儿就静止」。
+     正确组合是 `alwaysPauseDesktop=false` + `pauseWhenOccluded=true`：
+     锁屏无遮挡 → 持续播放；桌面被 Dòng 全屏窗口盖住 → 暂停，省一份解码
+     （实测扩展 footprint 约 35 MB，走 2816×1584 变体）。
+- **验证**：扩展被 `/Applications/Dòng.app` 注册并拉起；系统设置出现「Dòng — 视频壁纸」；
+  用户实测「锁屏动、桌面静」符合设计；切换壁纸后容器内只保留当前一条。
+- **已知问题**：
+  - 私有 `WallpaperExtensionKit`，macOS 大版本更新可能失效（Phosphene 同样风险）。
+  - 系统选择器缓存偶尔不刷新，需要清 `com.apple.Wallpaper-Settings.extension` 缓存或重启 WallpaperAgent。
+  - 两个 Phosphene 测试容器（`dev.phosphene.extension` / `glass.kagerou.phosphene.extension`，约 37 MB）
+    受系统容器保护，`rm` 删不掉，暂留。
+- **数据**：appex 约 904 KB（压缩后更小），扩展空闲 footprint 约 6 MB；不改变 DMG 主体积。
+
+### F22 · 「锁屏也播放视频」可行性调研 — 状态：`已验证可行（第二轮修正）`
+
+- **日期**：2026-11-24（19:50 修正）
+- **需求**：锁屏界面里壁纸继续播放视频（不是静态帧）。
+- **结论（已修正）**：**可行**。第一轮写的「macOS 26 平台不支持」是错的，错在测试方法：
+  ① 只改了 `Desktop` 没改 `Idle`（锁屏读的是 `Idle`，两者独立）；
+  ② 用的是 fork 不是原版；
+  ③ 手动改 `Store/Index.plist` 会被 WallpaperAgent 按 UI 状态写回；
+  ④ 测试时 Dòng 仍在跑，它的「锁屏跟随」会把壁纸覆盖成静态帧。
+- **第二轮实测（fork 扩展 + 系统 UI 应用壁纸）**：桌面与锁屏都在播同一段视频。
+  日志链路：`ACQUIRE → VideoRenderer started → UPDATE mode: default, activity: active`；
+  锁屏时 `UPDATE mode: locked, activity: active`，**没有** `SNAPSHOT`、没有 `INVALIDATE`；解锁后回到 `mode: default`。
+- **关键前提**：① 扩展必须被 ExtensionKit 注册（App 在 `/Applications` 内嵌 appex，或系统里已有该 bundle id 的注册记录）；
+  ② 壁纸必须在系统设置 UI 里选中应用，手改 plist 不生效；③ 测试前必须停 Dòng。
+- **技术路线**：私有 `WallpaperExtensionKit`（macOS 14+ 的 wallpaper extension point）+ `AVSampleBufferDisplayLayer` 远程 CAContext。
+  与 Dòng 现有「桌面层自绘窗口」是两套互斥的渲染通路：同一块桌面只能有一个壁纸 provider。
+
+#### 第一轮误判记录（错误结论，保留作教训）
+
+  1. **对照实验**：Apple 自带航拍壁纸（系统唯一官方动态壁纸）锁屏后也不动 → 锁屏层只显示壁纸的静态快照。
+  2. **A 写系统航拍清单**：往 `~/Library/Application Support/com.apple.wallpaper/aerials/manifest/entries.json` 插入自定义 asset
+     （本地 mov + 缩略图）后，WallpaperAgent 重启不覆盖条目，但系统设置列表始终不显示。
+     根因：列表读的是 root 权限的 `/Library/Application Support/com.apple.idleassetsd/Aerial.sqlite`，
+     用户级 entries.json 只是下载缓存，UI 不读。继续做需要 sudo 改系统库，且每 24h 会被 Apple 清单覆盖，不可分发。
+  3. **B 私有框架 `WallpaperExtensionKit`**（参考开源 Phosphene，MIT）：扩展能被 ExtensionKit 加载，桌面接管成功
+     （日志：`ACQUIRE → Created remote CAContext → VideoRenderer started → UPDATE mode: default, activity: active`，
+     `Store/Index.plist` 的 `Desktop` provider 变为扩展 bundle id）；
+     但锁屏时系统只发 `UPDATE mode: locked` 后立刻 `SNAPSHOT`（3840×2160 位图），实时图层不挂到锁屏。
+  4. **C 屏保 `.saver`**：补上 `CFBundleSupportedPlatforms = [MacOSX]` 后能在「墙纸 → 屏幕保护程序 → 其他」列出
+     （缺这个键 Tahoe 会直接过滤掉第三方 saver）；但选中后预览黑屏，`legacyScreenSaver` 已启动却未实例化我们的 bundle
+     （`NSTemporaryDirectory()` 无日志、`lsof` 无加载记录）。Tahoe 的屏保实际由 WallpaperAgent 渲染，legacy `.saver` 只是被列出。
+- **新增文件（保留、未接入发布流程）**：`Saver/DongSaverView.swift`（AVQueuePlayer + AVPlayerLooper 的 .saver 实现）、
+  `build_saver.sh`（编译 / ad-hoc 签名 / 安装，产物 116 KB）。macOS 27 可再评估。
+- **环境已清理**：`/Applications/Phosphene.app`、`~/Library/ExtensionKit/Extensions/PhospheneExtension.appex`、
+  容器内测试视频、`aerials/entries.json`（从备份还原）、`Store/Index.plist`、屏保 `moduleDict` 均已撤销。
+- **顺带实测（若将来走 B 参考）**：扩展空闲 footprint 5.9 MB / resident 11.7 MB；appex 916 KB（压缩后约 250 KB）。
+- **可做替代**：锁屏显示当前帧（现状）；若要更无缝，可改为锁屏瞬间抓当前播放帧，替代现在固定 35% 位置抽帧。
+
+### F21.9 · 密码框支持粘贴 — 状态：`已装机`
+
+- **日期**：2026-11-25
+- **用户反馈**：登录时密码没法粘贴。
+- **原因**：`NSSecureTextField` 默认禁用粘贴（实测系统实现根本不响应 `paste:` 选择器），
+  密码管理器的长密码只能手打。
+- **处理**：新增 `PasteableSecureField: NSSecureTextField`
+  - 拦截 `Cmd+V` → 走自己的 `paste(_:)`
+  - 右键菜单补「剪切 / 拷贝 / 粘贴」（选中文本时才出现剪切拷贝）
+  - `AccountFieldBox(secure: true)` 统一换成它 → 登录、注册、改密码三处同时生效
+- **验证**：系统 `NSSecureTextField` 的 `responds(to: paste:)` 为 false，子类补上后可用（harness 实测）
+### F21.8 · 修改密码（服务端 + 界面） — 状态：`代码已 push（e063291），待官网重新部署`
+
+- **日期**：2026-11-25
+- **起因**：用户忘了密码，v1 没有任何找回/修改手段；且发现生产账号被清盘（`storage:"disk"`），
+  等于「忘了密码 = 账号作废」。
+- **服务端**：`POST /api/auth/password`，要 `{oldPassword, newPassword}`，需登录。
+  - 校验旧密码（scrypt + timingSafeEqual），新密码 ≥ 8 位、不能与旧密码相同
+  - 成功后换 salt/hash，**作废该账号其它设备的令牌，保留当前这台**
+- **客户端**：`AccountAPI.changePassword`；账号面板新增「改密码」按钮 → 切到改密码表单
+  （当前密码 / 新密码 / 确认 + 保存/取消），成功后弹「其它设备需重新登录」
+- **验证（本地 8810 端口）**：旧密码错 401；正确 200；旧密码登录 401；新密码 200；
+  当前设备 token 仍 200；另一设备 token 401
+- **生产**：调该接口返回 404「没有这个接口」→ **他们跑的仍是旧 server.js，需要重新部署**
+- **调试钩子**：`VW_ACCOUNT_PW=1` 直接摆出改密码表单截图（需配合 `VW_SYNC_FAKE=邮箱|token|0.4` 走预览模式，
+  否则会真发请求、401 后被登出，导致登录表单和改密码表单同时显示）
+### F21.7 · 同步进度可视化 + 修「换签名掉登录」 — 状态：`已装机，待用户重新登录验证`
+
+- **日期**：2026-11-24
+- **用户反馈**：看不懂上传到哪一步了。
+- **界面**：
+  - 账号面板同步时出现**进度条**（品牌橙）+ 明细「42% · 186 MB / 443 MB · 第 7/22 张」
+  - 状态行改「正在上传 · 文件名」，同步中主按钮变灰并显示「同步中…」，避免点了没反应
+  - **底栏头像加白色进度环**（底下垫一圈 20% 白轨道），不打开面板也能看出在动
+- **🔴 关键 bug（这次真正的原因）**：`AccountStore` 原来把会话存**钥匙串**。App 是 ad-hoc 签名，
+  **每次重新编译签名都变**，钥匙串条目的 ACL 认签名 → 装新包后读不到旧会话，
+  直接显示「未登录」、同步根本不跑（用户看到的就是「一直没动静」）。
+  改为存 `support/session.json`（0600，原子写），保留一次从钥匙串迁移的逻辑。
+  代价：安全性低于钥匙串（同用户可读），但换来更新不掉登录——对 ad-hoc 分发的 App 这是必须的取舍。
+- **进度数据**：`SyncEngine.Progress`（text / fraction / done / total / bytesDone / bytesTotal），
+  `SyncCenter` 暴露 `progress`，`run(progress:)` 签名同步改掉
+- **调试钩子**：`VW_SYNC_FAKE=邮箱|token|0.42` 可摆拍「同步中 42%」的界面（`previewOnly` 时不联网）
+- **副作用**：装新包后用户需要**重新登录一次**；旧钥匙串条目在新签名下读不出来，无法自动迁移
+### F21.6 · 首传可续 + 进度计数 + sync.log — 状态：`已改代码，待用户上传完成后装机`
+
+- **日期**：2026-11-24
+- **起因**：真实用户（本机 22 张 / 443MB）首次同步时，UI 只有「上传 xxx」一行，
+  看不到第几张、也不知道是不是卡住；而且状态文件只在全部传完才写，中途断掉下次要全量重传。
+- **改动**（`SyncEngine.swift`）：
+  - `SyncState` 新增 `synced: [String: String]?`（id → sha）：每成功上传一张就 `saveState` 落盘；
+    `plan()` 里若 `synced[id] == sha` 且云端清单还没有它，**跳过重传**但要合并进清单 —— 断点续传
+  - 进度文案改成「上传 3/22 · 名称」/「下载 3/22 · 名称」
+  - 新增 `sync.log`（support 目录）：记录开始（本地张数/动作数/rev）、每张失败原因、结束统计
+  - 清单写成功后清空 `synced`
+- **兼容**：`synced` 用可选类型，旧 `sync-state.json` 没有这个键也能解码
+- **验证**：`swiftc -typecheck` 全量 0 error（注意编译清单要带 `DynamicLockScreen.swift`，
+  少了会报一堆 `DynamicLockScreen` 找不到，与本改动无关）
+- **未做**：因为用户当次上传仍在进行，**没有覆盖安装**（装 = 杀掉进程 = 中断上传）
+### F21.5 · 接线上地址并出包 3.43 — 状态：`已出包，待上传发布 + 真机双设备验证`
+
+- **日期**：2026-11-24
+- **官网侧验收**：gateway 12 条全过，我提的 3 条确认（302 不改写 / 签名直链 https / list 可用于自检）全部满足。
+- **改动**：`Info.plist` → `SyncBaseURL = https://dongisgood.coze.site`（主域名直挂，无子域名）。
+  版本号 3.43 / 65 是既有值，本次未改。
+- **产物**：`dist/Dòng-3.43.dmg`，size `62002210`，
+  sha256 `b3dfd357f2f1bcbdfee2d87fd8f60c71d756737980f36a27462d28d67c38929f`
+- **验证（走真实线上服务，不是本地 mock）**：
+  - `GET /healthz` 200；注册/登录/`/api/me` 正常
+  - A 库上传 3 张（300/500/700KB）→ 云端 order 与 A 本地一致 → 新空库 B 首次同步 `下载 3`，
+    逐张 sha256 一致；B 本地顺序同步前被改成 01,02,03，同步后被云端覆盖回 02,01,03（顺序真的同步）
+  - B 删除一张 → A 再同步 `删除 1`（墓碑传播正确，不会被推回来）
+  - **注意**：验证用的是同一台机器上三个隔离库（独立 `VW_SUPPORT_DIR` + 独立 sync-state），
+    不是两台物理机；用户目前没有第二台 Mac，已在给官网侧的回执里写明这一点
+  - **副作用**：`VW_SUPPORT_DIR` 隔离了壁纸库，但**没有隔离 UserDefaults**，
+    测试期间 `VWTuning.libraryOrder` 被写成了测试文件名；已 `defaults delete` 清除该键（回落到按文件名排序）
+- **⚠️ 发现的问题**：线上 `/healthz` 返回 `"storage":"disk"`，说明生产**还没切 gateway**
+  （代码已部署，但 `DONG_STORAGE=gateway` 没生效/没重启）。此时壁纸写在 `/tmp/dong-sync/data`，
+  平台清理磁盘就会丢文件——这是官网侧自己认定「正式运营前必须解决」的那条。
+- **测试账号**：`qa-check-20261124@example.com`（我为验证注册的，官网侧可删）
+### F21.4 · 存储层抽象：支持官网存储网关 — 状态：`已 push（5bb6444）/ 待官网切 gateway`
+
+- **日期**：2026-11-24
+- **官网侧回执**：10 条验收全过；但他们平台上**没有可交付的 S3 AK/SK**（SDK 用 workload identity
+  动态换临时凭证），改提供内部网关 `/api/sync-storage/*`（upload / url / list / object），
+  要求我把存储实现换成 `DONG_STORAGE=disk|gateway`。
+- **实现**：新增 `sync-server/storage.js`（两种模式，接口契约不变）
+  - `put`：gateway 下把入站请求**管道**给网关，边传边算 sha256，不落临时文件；返回的 key
+    （`sync/{uid}/{aid}_{uuid}`）记进 `users/<uid>/assets.json`
+  - `locate`：换 1 小时签名直链，`GET /api/sync/asset/*` 直接 **302**，512MB 不经过本进程
+  - `del`：按映射删网关对象并清映射
+  - **同名覆盖会先记下旧 key，上传成功后主动删旧对象**（不然后台每次上传都留一份孤儿对象）
+  - `usedBytes`：gateway 下按清单 `bytes` 汇总（网关 list 不返回 size）
+  - `selfCheck`：启动时 `list?prefix=sync/selfcheck/`，失败 → 日志报错 + `/healthz` 503，
+    **默认不退出**（平台会反复重启，日志反而更难看），`DONG_GATEWAY_STRICT=1` 才退出
+- **凭证**：只读 `SYNC_INTERNAL_TOKEN`，仓库里不写任何 token。
+- **验证（本地假网关，按官网文档 4 个动作实现）**：上传 1MB → 302 下载 sha256 一致；
+  写清单后 `/api/me` usedBytes 正确；删除后网关对象清空、映射清空、再下载 404；
+  同名覆盖后对象数仍为 1 且下载到新版；错误 token / 缺 token → healthz 503 + 明确报错且不崩。
+  磁盘模式回归通过（500KB 上传下载 sha256 一致，文件落 `users/<uid>/assets/*.bin`）。
+- **待官网确认**：302 会不会被反代改写；签名直链是否 https（App 有 ATS）；list 仅用于自检。
+### F21.3 · 服务端上库 + 托管平台适配（对官网侧的回复） — 状态：`已 push / 待官网部署`
+
+- **日期**：2026-11-24
+- **官网侧反馈**：仓库里 `video-wallpaper/sync-server/` 是 404；他们用托管平台，没有独立子域名，
+  采用**同域名路径反代**（`SyncBaseURL = https://dongisgood.coze.site`，路径原样）；
+  进程由官网服务自动拉起（注入 `SYNC_PORT`）；**平台磁盘会被定期清理**，要求壁纸文件走对象存储；
+  平台层加不了 `limit_req`，希望服务端自带限流。
+- **处理**：
+  1. 代码提交并 push 到 `main`（`7260f95` 服务端、`c2d29a5` README），raw 可拉。
+  2. `server.js` 读 `SYNC_PORT`（优先）→ `PORT` → 8787，适配他们的注入方式。
+  3. 内置按 IP 限流：注册 5 次/分、登录 12 次/分，超限 429；**依赖反代透传 `X-Forwarded-For`**，
+     不透传的话所有人都算同一个 IP，5 次之后全体被挡（已在回复文档里标明要验收）。
+  4. 新增 `sync-server/.gitignore`（`data/`、`*.log`），避免把测试数据提交上去。
+  5. 本机临时服务同步换成新版本（`~/Library/Application Support/DongSync/server.js`）。
+- **存储**：选 A（对象存储），但分两步——先磁盘版跑联调（明确接受清理风险），
+  拿到 endpoint / bucket / region / AK / SK / path-style 后再加 `DONG_STORAGE=disk|s3` 抽象，
+  接口契约与错误码不变。
+- **产出文档**：`Dòng同步服务-给官网侧的回复.md`（回答 6 点 + 反代注意事项 + 第 7 条限流验收）。
+- **验证**：`SYNC_PORT=8799` 启动正常；连续注册 6 次 = 200×5 + 429；带 `X-Forwarded-For` 换 IP 可继续注册。
+### F21.2 · 先跑起一个能用的同步服务（本机 + 局域网） — 状态：`可用，临时方案`
+
+- **日期**：2026-11-23
+- **现象**：用户点「注册并开始同步」报 `请求失败（404）`。
+- **原因**：`Info.plist` 的 `ApiBaseURL` 指向官网 `dongisgood.coze.site`，那里没有 `/api/auth/*`；
+  同步服务从没部署过，所以注册 / 登录必然 404。不是客户端 bug。
+- **临时处理**：
+  - 服务跑在本机：`~/Library/Application Support/DongSync/server.js`，数据同目录，端口 8787。
+  - `Info.plist` 新增 `SyncBaseURL = http://10.10.11.24:8787`（本机局域网 IP）。
+  - 重打包并覆盖 `/Applications/Dòng.app`，旧包留在 `/Applications/Dòng.app.bak-login`。
+- **验证**：`/healthz` 200、`/api/auth/register` 200；装好的 App 不带环境变量也能连上（走 Info.plist）。
+- **限制（必须尽快换掉）**：
+  - 该服务只在当前会话存活，`launchctl bootstrap` 在本机报 `Input/output error`（沙箱与系统域都试过），
+    需要用户自己在「终端」里加载 `~/Library/LaunchAgents/com.zhanghangshuo.dongsync.plist` 才能常驻。
+  - `10.10.11.24` 是 DHCP 地址，变了就登录失败；`.local` 主机名在本机 mDNS 解析不通（试过，
+    `NSAllowsLocalNetworking` 也没救），所以没用主机名。
+  - 真正「换设备」要公网 HTTPS 地址，下一步应部署到云主机 / Render 等，再把 `SyncBaseURL` 换掉。
+### F21.1 · 账号入口改成底栏头像 + 独立账号面板 — 状态：`已验证（本机截图）/ 待发版`
+
+- **日期**：2026-11-23
+- **用户反馈**：「登录界面很丑，新用户第一次用应该做好一点」；「不想把登录信息塞在设置里」；
+  「加一个地方放账号，把深浅色开关挪进设置，原来那个位置换成一个头像」。
+- **界面改动**：
+  1. **底栏最右**：「深色 / 浅色」磁贴 → `AvatarPill`（30pt，与其它磁贴同尺寸、同气泡）。
+     未登录显示人形剪影；登录后显示品牌橙渐变圆 + 邮箱首字母。点开 `AccountViewController` 面板。
+  2. **账号面板**（316pt 宽 popover，不再是独立窗口）：
+     - 未登录：淡橙圆角底托着果冻 logo、标题「登录 Dòng」、副标题「壁纸跟着账号走，换台电脑也在」、
+       两个自绘圆角输入框、橙色主按钮、「没有账号？用邮箱注册」切换、底部一行隐私说明。
+     - 已登录：64pt 渐变头像 + 邮箱 + 同步状态（失败时红字）+ 云端用量条（`/api/me`）+
+       「立即同步」「退出登录」。
+     - 按 Enter 直接登录；空状态行不占高度，切到注册模式会多出确认密码框并自动调整高度。
+  3. **设置弹层**：删掉「账号与同步」整块，顶部改为「深色模式」开关（原来底栏那颗磁贴的职责）。
+- **新增文件**：`AccountPopover.swift`（AvatarPill / AccountFieldBox / AccountButton / UsageBar /
+  AccountViewController）；删除 `AccountWindow.swift`（独立登录窗口）。
+- **改动文件**：`LibraryWindow.swift`（底栏、设置弹层、`toggleAccount`、`darkModeChanged`、
+  `showTip(text:anchor:)` 兼容头像、`debugSnapshotWindow`）、`main.swift`（`VW_WINDOW_SHOT` 调试钩子 +
+  `VW_ACCOUNT_SHOT` 改渲染新面板）、`build.sh`（文件名替换）。
+- **验证**：`VW_SETTINGS_SHOT` / `VW_ACCOUNT_SHOT` / `VW_WINDOW_SHOT` 三张截图逐项核对：
+  设置里只剩深色模式开关、底栏最右是头像（未登录人形 / 登录后 K）、面板两态排版正常；
+  `swiftc` 零错误，`build.sh` 通过。
+- **风险提示**：合并时注意 `LibraryWindow.swift` 里「设置分组折叠」（`SettingsSectionHeader` /
+  `toggleSettingsSection`）与本次改动互不重叠，但都在同一文件，冲突时保留双方。
+- **状态**：界面已定稿；服务端仍未部署，`SyncBaseURL` 未填。
+
+### F21 · 账号登录 + 换设备同步壁纸 — 状态：`已验证（本地全链路）/ 待部署服务器`
+
+- **日期**：2026-11-23
+- **用户要求**：「做一个可以登录的功能，用户换设备的时候还是可以继续使用自己添加的壁纸」。
+- **为什么必须自带服务端**：壁纸库现在就是 `~/Library/Application Support/VideoWallpaper/wallpapers/`
+  里的 mp4 + `streams.json` + 偏好里的顺序，纯本地。跨设备同步一定要有个服务端收文件和清单。
+  - WorkBuddy 云服务（genie-baas）不可用：它只发 JS SDK，且服务端按浏览器 Origin 精确匹配，
+    原生 App 没有 Origin，请求会被拒。**没有**用 Bash/curl 去戳它的数据面。
+  - 所以自带一个零依赖 Node 服务，放在 `sync-server/`，用户自己的机器/托管上跑。
+- **新增文件**：
+  - `sync-server/server.js`（零依赖：邮箱密码 scrypt、token 只存 sha256、清单 if-match 并发控制、
+    壁纸文件存盘、每账号 2GB 配额、`/api/me` 用量）
+  - `sync-server/README.md`（部署三种方式 + 环境变量 + 接口表 + 安全边界 + v1 已知限制）
+  - `Account.swift`（`SyncConfig` 域名、`AccountAPI` 注册/登录/清单/上传/下载、`AccountStore` 钥匙串存 token）
+  - `SyncEngine.swift`（本地快照 → 与云端清单合并 → 执行上传/下载/删除；sha256 校验；墓碑防回推）
+  - `SyncCenter.swift`（单例：启动同步、目录变化 4 秒防抖、401 自动退登、通知界面刷新）
+  - `AccountWindow.swift`（登录 / 注册窗口，系统控件，不做自绘）
+- **改动的旧文件**：`build.sh`（编译清单 + `-framework Security`）、`main.swift`（启动接同步 +
+  `syncChangedLibrary` 观察者）、`LibraryWindow.swift`（设置弹层顶部新增「账号与同步」三行 + 两个按钮）。
+- **同步规则**：
+  - 身份 = 文件名（`v-<文件名>`）/ 网页壁纸 `w-<stream id>`；清单里带 `sha256`
+  - 内容相同 → 什么都不做；不同 → mtime 新的赢
+  - 本地删除 → 云端留墓碑（30 天），另一台设备跟着删；云端墓碑比本地新才删，否则视为「删完又加回来」
+  - 顺序：云端 `rev` 变过就用云端顺序，否则把本地顺序推上去
+  - 上传失败的条目不写进清单，下轮重试
+- **验证（本地，隔离 `VW_SUPPORT_DIR`，不碰真实壁纸库）**：
+  1. harness（`swiftc Account.swift SyncEngine.swift` + 临时 main）对 `http://127.0.0.1:8787`：
+     注册 → A 上传 2 张 → B（全新目录）下载 2 张，sha256 全部一致 → A 删一张、B 同步跟着删 →
+     网页壁纸也能传 → 云端用量随删除回落。
+  2. 真机 App（`build/VideoWallpaper.app/Contents/MacOS/VideoWallpaper` + `VW_SYNC_ONCE=1`）：
+     `同步完成：上传 2`；换空目录同 token：`下载 2`，两份文件 sha256 与源一致。
+  3. 失效 token：状态变「未登录」并清掉本地会话，无崩溃。
+  4. 界面：`VW_SETTINGS_SHOT` / `VW_ACCOUNT_SHOT` 渲染设置弹层与登录窗口，未登录 / 已登录两态都正常。
+- **还没做（发版前必须解决）**：服务端尚未部署，`Info.plist` 没有 `SyncBaseURL`；
+  因此当前包里点「登录」只会提示「同步服务器还没配置」。版本号未动（3.42/64）。
+- **调试钩子**（都只在环境变量存在时生效）：`VW_SYNC_FAKE=email|token`、`VW_SYNC_ONCE=1`、
+  `VW_ACCOUNT_SHOT=/tmp/x.png`。
+
+### F20.2 · 修复「本地视频开头被裁 7 秒」：片头检测同样纳入本地保护 — 状态：`已验证 / 已装机 / 待发版`
+- **日期**：2026-11-24
+- **用户反馈**：32.3 秒原视频拖入后仍只截了一部分（附原视频 + 录屏）。
+- **根因**：F20 只给 `detectEndCard`（片尾）加了 `autoTrimEndCard` 开关，**`detectHead`（片头）没纳入**——本地导入仍在自动裁片头。`--detect` 实测该视频「片头剪到 7.00s」，32.3 秒只剩 25.3 秒。
+- **修法**：参数改名 `autoTrimEndCard` → `autoTrimIntroOutro`，`detectHead` 调用同样加该开关；本地导入（GUI 拖拽/选择、CLI `--import`）传 `false` 时**片头片尾都不裁**，链接下载素材仍保留自动裁剪。
+- **改动文件**：`Transcoder.swift`（参数改名 + detectHead 受控）、`main.swift`（2 处调用点改名）。
+- **实测（用户原视频 32.30s / 1280×800 / 30fps）**：修复前「片头剪到 7.00s」→ 约 25.3s；修复后 **32.67s 完整**，分辨率/帧率不变（+0.37s 为循环补帧）。已装 App 二进制复测同样 32.67s。
+- **本机装机（2026-11-24 08:52）**：最小替换 + 重签 verify 通过，PID 12410，无崩溃。回滚备份 `/tmp/vw_bin_backup_before_headfix_1795481479`。
+- **注意**：本次编译清单需含并行任务新增文件（`Account.swift` / `AccountPopover.swift` / `Rotation.swift` / `SyncCenter.swift` / `SyncEngine.swift` + `-framework Security`），`build.sh` 已更新。
+
+### F20.1 · 参数默认回归「原样」：不加速、不改帧率 — 状态：`已生效 / 待发版`
+- **日期**：2026-11-23
+- **用户要求**：「用户给的是怎么样的就是怎么样的（在不影响画质的情况下）」。
+- **排查**：代码里**没有自动调速/改帧率的逻辑**（`Tuning.speed` 只在用户拖滑块时写入）。1.31× 与固定 60fps 是历史残留的用户偏好值。
+- **处理**：删除 `VWTuning.speed`、`VWTuning.outputFPS` 两个偏好键 → 回到代码默认值。当前全部参数为默认：
+  - `speed` = 1.00×（原速）
+  - `outputFPS` = 0 → **跟随源**（源 30fps 就输出 30fps，不再强行补到 60）
+  - `loopLength` / `loopStart` = 0 → 整段循环
+  - `fade` = 0 → 无首尾淡化
+  - `brightness` = 0 → 无明暗调整
+  - `maxDuration` = 0 → 不限制时长
+  - 本地导入 `autoTrimEndCard = false`（F20）→ 不裁片尾
+- **实测**：12s / 30fps / 1280×720 源 → 输出 12.37s / **30fps** / 1280×720（+0.37s 为循环衔接补帧，非内容）。
+- **画质说明**：`targetSize` 只缩不放（按屏幕物理像素等比塞入），转码 CRF 18 高质量；内容、时长、速度、帧率均保持原样，只做一次为无缝循环/铺满屏幕的高质量重编码。
+- **注意**：已入库的旧壁纸是旧参数转的，**不会自动重转**；要看原速原帧率需重新导入视频。
+
+### F20 · 修复「本地视频拖进来只截取了一部分」：本地导入不再自动裁片尾卡 — 状态：`已验证 / 已装机 / 待发版`
+- **日期**：2026-11-23
+- **用户反馈**：本地视频拖入后只截取了一部分作为动态壁纸，不是完整视频。
+- **根因（实测定位）**：`Transcoder.detectEndCard` 的「片尾卡」检测误裁正常内容。两个缺陷：
+  1. **绝对阈值过高**：信号 B 的静止判定 `still = max(baseline * 0.12, 0.25)`，而风景/夜景/渐变/延时这类本身就低运动的素材，帧差中位数只有 0.2~0.5，被整段判成「静止片尾」。
+  2. **裁切上限太宽**：`removed <= max(4.0, duration * 0.4)`，最长可裁走 40% 时长（60s 视频能裁 24s）。
+  3. 更本质的：**算法无法区分「正常的静止收尾」与「作者加的片尾卡」**——同一条视频（24s，结尾 6s 静止）既可能是内容也可能是片尾。实测 `--detect` 对「正常静止收尾」和「黑屏片尾卡」给出完全相同的结果。
+- **修法（三层）**：
+  1. `importVideo` 新增 `autoTrimEndCard` 参数（默认 `true`）：**本地导入（GUI 拖拽/选择文件、CLI `--import`）传 `false`，不再裁片尾**；只有链接下载的网络素材（`--link`）保留自动裁片尾卡。这是根治——用户自己的视频片尾就是内容。
+  2. `detectEndCard` 加保护：`guard baseline >= 1.0 else { return nil }`——整段都很安静的素材不存在「正片+片尾卡」结构，直接跳过。
+  3. 阈值收紧：`still` 下限 0.25 → 0.08、相对值 0.12 → 0.15；裁切上限 `duration*0.4` → `min(8s, duration*0.25)`；信号 A 的静判定也从 `max(baseline*0.8, 2.5)` 收紧到 `max(baseline*0.5, 1.5)`。
+- **改动文件**：`Transcoder.swift`（detectEndCard 阈值 + importVideo 参数）、`main.swift`（pumpImport 按 `origin` 分流、`runImportCLI` 传 false）。
+- **实测验证（隔离库）**：
+  - 24s「前18s有运动 + 后6s静止」视频：修复前 **截掉片尾 6.0s → 输出 18.35s**；修复后 **输出 24.37s 完整**（+0.37s 为首尾淡化补帧）。
+  - 24s 低运动渐变（风景/夜景类）：修复前后均完整 24.37s。
+  - 24s 普通运动视频：完整 24.37s。
+  - 真片尾卡（黑屏结尾）：`--detect` 仍正确检出「截到 18.00s（-6.00s）」，链接下载路径行为不变。
+- **本机装机（2026-11-23 10:14）**：最小替换 `/Applications/Dòng.app` 二进制 + 清 pyc + 重签 verify 通过；PID 34021。**顺带发现并清理了重复进程**——`~/Applications/VideoWallpaper.app` 与 `/Applications/Dòng.app` bundle id 相同（`com.zhanghangshuo.dong`），`open` 会拉起旧路径那个，已 kill 只保留 `/Applications/Dòng.app`。回滚备份 `/tmp/vw_bin_backup_before_trimfix_1795399727`。
+- **注意**：v3.41 的 DMG 需重打（此前打的包不含此修复）。
+
+### F16 · 图片直链识别：右键「复制图片地址」的链接直接做成静态壁纸 — 状态：`已验证 / 二进制已装机 / 待用户 GUI 确认 / 待发版`
+- **日期**：2026-11-19
+- **用户诉求**：在壁纸站右键「复制图片链接」，把链接发到 Dòng 里，**有的能做成壁纸、有的做不成**，要求兼容到每次都成功。
+- **根因（实测定位，两个）**：
+  1. **旧分流错误**：`importLink` 只把 B站/抖音/YouTube 当视频站，其余链接一律 `isWebCandidate = true` → 交给 `addWebWallpaper` 用 **WKWebView 当网页加载**。图片能不能成，取决于 WebView 认不认这张图、站点是否禁止内嵌——于是同一种链接时而成功时而失败，且成功时也只是「网页里的一张图」，不是真壁纸。
+  2. **扩展名形态多样**：图片直链的扩展名可能在 path（`/a.png`）、在 query（`cn.bing.com/th?id=xxx.jpg`）、或带参数（`/a.png?w=1`）；只按 `pathExtension` 判断会漏掉 query 形态，被错当视频丢给 yt-dlp 而失败。
+- **改动文件（全部 `main.swift`）**：
+  - `importLink` 开头新增分流：`looksLikeImageLink(link)` 命中就走新增的 `importImageLink`，**不再进 WKWebView 网页壁纸**。
+  - 新增 `looksLikeImageLink`：三种形态全覆盖（path 扩展名 / query 里的扩展名 / path 末段扩展名），复用 `Transcoder.imageExts`（含 webp/heic/gif 等）。
+  - 新增 `importImageLink`：带浏览器 UA + 图片 Accept 用 URLSession 下原图 → 按 `Content-Type` 定扩展名（不迷信 URL 后缀，站点常把 WebP 写成 .png）→ **落盘后 ImageIO 试解一次**，是「200 + HTML 验证页」就友好报错而不是喂给转码 → 交 `enqueueImport` 走既有 `importStillImage` 做成 2 秒静态壁纸。
+  - 新增 `isDecodableImage`：ImageIO 双路（`CreateImageAtIndex` 失败再试 thumbnail）判断是否真图片。
+  - CLI `runLinkCLI` 同步支持：图片链接先处理（不再被「找不到 yt-dlp」挡住），新增 `fetchImageCLI` 同步下载，走 `importStillImage`。
+- **端到端实测（CLI harness，隔离 VW_SUPPORT_DIR）**：
+  - 哲风静态图 `cache_file/…17603630336822656.png`（后缀 .png 实为 WebP，890×501）→ ✅ 生成 890×500 / 2.00s / h264 静态壁纸 mp4。
+  - 必应 `cn.bing.com/th?id=…jpg`（扩展名在 query）→ ✅ 生成 1920×1080 静态壁纸 0.5MB（修复前会被当成视频失败）。
+  - 回归：另一张哲风图 ✅；`/homeViewLook/<id>` 详情页仍走原视频链路 ✅（未被误判为图片）；`shadertoy` 网页链接仍非图片 ✅。
+  - 识别函数单测：`/x.png`✅图片、`/x.png?w=1`✅图片、`?id=a.jpg`✅图片、`/page`✅非图片、`/a.webp`✅图片、`/x.mp4`✅非图片。
+  - 边界：403 链接 → 「HTTP 403，链接可能失效或需要登录」友好报错、不崩；404 伪装 .png → 同样友好报错。
+- **已知限制（站点设计，非代码问题）**：哲风等站公开只有 **890~1100px 的缩略图**（30~40KB），原图（如 3840×2160 / 39MB）在 `file/`、`original_file/` 目录返回 **403 需会员权限**。所以这样做成的是「缩略图静态壁纸」，清晰度受站点限制；要原图仍需站内正常下载或会员。
+- **本机装机（2026-11-19 20:29）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（编译产物）、清 pyc、`codesign --force --deep --sign -` + `--verify --deep --strict` 通过；偏好 57 键完好、版本仍 3.40/62；重启 PID 58837。回滚备份 `/tmp/vw_bin_backup_before_imglink_1795091947`。
+- **待用户**：GUI 里贴一张图片直链（面板链接框 / 壁纸库导入），确认真能做成壁纸。
+
+### F15 · 网页 / 流媒体壁纸（借鉴 Lively「URL 即壁纸源」）— 状态：`代码完成 / 端到端 harness 全过 / 二进制已装机 / 待 GUI 确认（受并行调试会话影响暂未重启验证）/ 待发版`
+- **日期**：2026-11-19
+- **方案**：贴一个链接，B站/抖音/YouTube 仍走原「下载+转码」高画质链路；**其它链接（任意网页、Shadertoy、在线播放页）不下载不转码，用 WKWebView 每屏一个实例直接渲染成壁纸**。YouTube 自动转 embed（`autoplay=1&mute=1&loop=1&controls=0`，循环+静音+无控件），Shadertoy 转 embed（`gui=false`），普通网页原样加载。对应逆向 Lively 报告里的第 ② 项。
+- **改动文件**：
+  - 新增 `WebWallpaper.swift`：`WebStream`（id/name/url/addedAt）+ `WebStreams`（streams.json 读写、虚拟 URL `dongweb://<id>`、导入分流 `isWebCandidate`、`targetURL` embed 转换）+ `WebEmbed`（YouTube/Shadertoy 播放页转换）+ `WebWallpaperView`（WKWebView 封装：无手势自动播放、documentEnd 注入 JS 静音/自动播/播放器页铺满裁切、`pauseMedia()/resumeMedia()/shutdown()`）+ `WebThumb`（地球图标缩略图）。
+  - `main.swift`：`Source.load()` 合并 streams.json（dongweb 排在本地文件后）；`rebuildBody` 按 scheme 分流到新增 `rebuildWebBody`（每屏 WallpaperWindow + WebWallpaperView）；teardown/applyAutoPause/applyAutoResume 接入 webViews（自动暂停 = JS 停页面媒体，不拆窗口）；`pushLockScreen` 跳过非本地素材；`displayName`/`index didSet`/`libraryDelete`/`libraryMove`/预热/`Source.saveOrder` 全部适配虚拟 URL（`dongweb://` 的 lastPathComponent 是空的，一律用 `streamID` 或整条 URL 比较）；`importLink` 开头分流到新增 `addWebWallpaper`（不下载直接入库，与视频同规矩：入库不换壁纸）。
+  - `LibraryWindow.swift`：`GalleryThumb.info/cached/load` 网页壁纸快速路径；卡片名显示 `WebStreams.displayName`；`metaText` 显示「网页壁纸」；卡片悬停预览与「在访达中显示」对非本地素材跳过（避免 AVPlayer 吃 dongweb:// 报错）。
+  - `build.sh`：编译列表加 `WebWallpaper.swift`。
+- **验证（2026-11-19）**：
+  - 逻辑 harness **18/18 全过**：视频站/网页分流 9 例、embed 转换 6 例、虚拟 URL 往返 3 例。
+  - **端到端集成 harness 全过**（真实 WKWebView）：streams.json 写读去重删除、embed 转换、WebView 创建+加载 Shadertoy embed 存活 5s、JS 暂停/恢复/shutdown 无异常。
+  - harness 抓出并修掉 **2 个真 bug**：① `WKPreferences/WKWebView` 的 `setValue(false, forKey:"drawsBackground")` 老私有 KVC 在当前 macOS 直接抛 `NSUnknownKeyException`（SIGTRAP）——删除，改用公开 API `underPageBackgroundColor = .black` 防白屏闪烁；② `save()` 用 iso8601 编码日期而 `load()` 未设对应解码策略 → 解码静默返回空、库凭空消失 + `virts[0]` 越界崩溃——补齐 `dateDecodingStrategy = .iso8601`。
+  - `VW_NO_PRESETS=1 zsh build.sh` 全量编译通过（17:14 产物含并行会话已完成的 HoverCatcher 改动，互不覆盖）。
+- **本机装机（2026-11-19）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（1653440 B）+ `codesign --force --deep --sign -` 重签 + `--verify --deep --strict` 通过，`dongweb` 符号确认编入；版本仍 3.40、偏好与 bundle id 未动；回滚备份 `/tmp/vw_bin_backup_before_f15_webwp_1795079691`。**运行态重启暂缓**：另一会话正在并行调试 Dòng（悬停功能），为避免互杀进程打架，待其结束后重启验证。
+- **已知限制（第一版）**：网页壁纸不参与拖动重排持久化（重启后排本地素材后）；锁屏静帧同步对网页壁纸跳过；非 16:9 屏幕上 YouTube embed 有 letterbox 黑边；B站直播链接仍走下载链路（会失败），后续可加 embed 分流。
+- **待用户 GUI 确认**：壁纸库贴一个非视频站链接（如 `https://www.shadertoy.com/view/4ttSWf`）→ 库里出现地球图标条目 → 点它设为壁纸 → 桌面直接渲染网页；全屏/锁屏时自动暂停生效（F14 策略对网页壁纸同样工作）。
+- **状态**：代码完成、harness 验证全过、二进制已装机；版本号未动、未提交、未单独发版。
+
+### F14.2 · 暂停态按用户定稿改回「静态果冻」（F14.1 撤销换图标方案）— 状态：`已装机 / 用户已确认 F14 功能测试通过 / 待发版`
+- **日期**：2026-11-19
+- **背景**：F14.1 的橙色暂停符号方案用户测试后定稿：**暂停时显示静态果冻（停摆帧）即可**，不换图标。同时用户确认 F14 自动暂停功能（全屏/锁屏/规则开关）测试通过。
+- **改动文件**：`main.swift`（`updateStatusItem`）。
+- **行为变化**：
+  - 移除 F14.1 的 `pause.circle.fill` 暂停符号与 `contentTintColor` 染色。
+  - 暂停时菜单栏图标 = 果冻停在静态帧（`MenuBarSway.update(mood: .off)`，本来就有）；正常播放时果冻继续晃；tooltip 的「已因<原因>自动暂停」文案保留。
+- **验证/装机（2026-11-19）**：编译通过；装机 sha256 与新 build 一致，二进制中 `pause.circle.fill` 已确认移除（0 处）；重签 verify 通过；强杀旧进程后重启 PID 11000 → 15070；发模拟锁屏通知 App 存活。版本仍 3.40、未提交、未单独发版；回滚备份 `/tmp/vw_bin_backup_before_f14_2_jellyonly_1795077234`。
+- **状态**：已装机。①③ 至此用户确认测试通过，可排第 ② 项流媒体/网页壁纸。
+
+### F14.1 · 暂停态图标改为明确的橙色暂停符号（F14 可视化补丁）— 状态：`已装机 / 待用户 GUI 确认 / 待发版`
+- **日期**：2026-11-19
+- **问题**：F14 的暂停态可视化只把菜单栏图标 alpha 从 1.0 降到 0.5 + 果冻停摆。用户发来 21 秒录屏反馈「菜单栏图标没像说的那样变」。像素实测确认：暂停时橙色图标亮度仅从 137 降到 115（约 16%），且果冻晃动幅度本就很小——**肉眼几乎无法分辨，等于没效果**。（另：用户录屏中壁纸画面的帧差剧变来自点开面板动画，非壁纸播放，与暂停无关。）
+- **改动文件**：`main.swift`（`updateStatusItem`）。
+- **行为变化**：
+  - 移除暂停时的 alpha 降低（原来 0.5），图标始终维持正常亮度。
+  - 自动暂停时，在果冻 `stop()` 停摆之后，**把菜单栏图标直接换成橙色 `pause.circle.fill` 暂停符号**（18pt，`contentTintColor = .systemOrange`）；放在 `MenuBarSway.update` 之后调用，避免被果冻帧覆盖。
+  - 恢复时 `contentTintColor = nil`，果冻 `start()` 自动把图标换回常态——暂停/续播一眼可见。
+  - tooltip 的「已因<原因>自动暂停」文案保留。
+- **验证（2026-11-19）**：
+  - `VW_NO_PRESETS=1 zsh build.sh` 全量编译通过（仅原有 deprecated 警告）。
+  - 装机二进制 sha256 `715e7aa36daf2c38b72e74d09bdc1b4a14751e6355cd5041b66e19688241fb5a` 与新 build 完全一致，`pause.circle.fill` 资源确认编入。
+  - 发模拟锁屏通知后 App 进程存活无崩溃（沙箱下 `screencapture` / avfoundation 抓屏被拒，视觉确认改由用户 GUI 完成）。
+  - 逻辑确定性：暂停时 `MenuBarSway.update(.off)` 会 `stop()` 掉定时器，暂停符号不会被动画帧覆盖；恢复时 `start()` 换回果冻。
+- **本机装机（2026-11-19）**：最小替换二进制 + `codesign --force --deep --sign -` 重签 + `--verify --deep --strict` 通过；版本仍 3.40、偏好与 bundle id 未动；回滚备份 `/tmp/vw_bin_backup_before_f14_1_pauseicon_1795076293`；重启 PID 98337 → 11000。
+- **待用户 GUI 确认**：发锁屏或打全屏 → 菜单栏图标应变成明显橙色暂停符号（一眼可见）、tooltip 写明原因；条件解除 → 图标变回晃动的果冻。
+- **状态**：已装机，改动留工作区；版本号未动、未提交、未单独发版。
+
+### F14 · 自动暂停策略 + 状态可视化（借鉴 Lively）— 状态：`已装机 / 状态机 harness 全过 / 待用户 GUI 确认 / 待发版`
+- **日期**：2026-11-19
+- **来源**：用 REA 源码证据方法论逆向 Lively Wallpaper 后，确认其系统性领先 Dòng 的一点是运行时省电策略（`Suspend/Playback.cs`：前台全屏 / 锁屏 / 电池自动暂停）。Dòng 此前 `isPaused` 只是重建时的临时标志，**没有任何自动暂停**，用户打全屏游戏 / 看视频时壁纸仍在后台满速解码。用户决定本轮做「自动暂停 + 状态可视化 + 规则开关」，流媒体/网页壁纸（第 ② 项）等本轮测试后再排期。
+- **改动文件**：
+  - 新增 `PlaybackPolicy.swift`：1 秒定时器 + 系统通知（`com.apple.screenIsLocked/Unlocked`、`NSWorkspace.screensDidSleep/Wake`、`Tuning.changed`）汇总三类信号；前台全屏用 `CGWindowListCopyWindowInfo` 比对前台 PID 窗口 bounds 与 `CGDisplayBounds`（12pt 容差），低电量用 `ProcessInfo.isLowPowerModeEnabled`（macOS 12+）。只回调 `onPause(reason)` / `onResume()`，不碰窗口；`invalidate()` 供启用/关闭后强制重判；重复通知按 reason 去重。
+  - `Tuning.swift`：新增 3 个 Bool 开关 `pauseOnFullscreen` / `pauseOnLock` / `pauseOnLowBattery`，**默认全开**；统一 `readBool/writeBool` 存取（前缀 `VWTuning.`），改动广播 `changed` 让策略立即重判。
+  - `main.swift`：`applicationDidFinishLaunching` 注入 `isActive`（跟随 `isShowing`）/ `onPause` / `onResume` 并启动策略；新增 `applyAutoPause(_:)` / `applyAutoResume()`——**只 `player.pause()/play()`，不 teardown**，续播按 `Tuning.speed` 恢复倍速；`rebuildBody` 的 `isPaused = wasPaused` 天然保住暂停态；`setEnabled` 清旧原因并 `invalidate()`；菜单栏 `updateStatusItem` 在暂停时图标 alpha 降到 0.5、果冻停摆、tooltip 追加「已因<原因>自动暂停（条件解除后自动续播）」。
+  - `LibraryWindow.swift`：设置弹层（`makeSettingsController`）在透明度下方加「自动暂停」区，3 个 `NSSwitch` 绑上述开关；`refreshSettingsState` 每 0.4s 同步状态。
+  - `build.sh`：编译列表加 `PlaybackPolicy.swift`。
+- **行为变化**：
+  - 前台应用全屏铺满任一屏（含全屏游戏）→ 壁纸静默暂停、解码/GPU 归零；退出全屏 → 原地续播，不闪不重建。
+  - 锁屏 / 显示器睡眠 → 暂停；解锁 / 唤醒 → 续播。低电量模式 → 暂停（不是「用电池就停」）。
+  - 三类规则可在「壁纸库 → 设置」里单独关闭；关掉正在生效的规则时立即续播，不必等下一秒。
+  - 自动暂停期间菜单栏图标变暗 + 停止晃动 + tooltip 写明原因；面板照常可点、可换壁纸。
+- **验证（2026-11-19）**：
+  - `VW_NO_PRESETS=1 zsh build.sh` 全量编译通过（仅项目原有 deprecated 警告）。
+  - 独立 harness（`Tuning.swift` + `PlaybackPolicy.swift` 编译成命令行程序）**8/8 全过**：初始不暂停 / 锁屏命中 / 重复通知去重 / 关规则立即续播 / 解锁在规则关闭时无动作 / 重新开规则再锁屏 / `invalidate` 强制重判 / 解锁续播。
+  - `CGWindowList` 探针实测：`kCGWindowOwnerPID` 用 `NSNumber` 取值正确（避免全屏检测静默失效），窗口 bounds 与 `CGDisplayBounds` 同坐标系，全屏判定几何成立。
+  - 修掉一个启动边界 bug：`applyAutoPause` 原要求 `players` 非空才记录原因，开机自启时若已锁屏会漏暂停；改为不要求播放器存在，靠 `rebuildBody` 的 `wasPaused` 自动暂停新 player。
+  - 装机后向系统发 `com.apple.screenIsLocked/Unlocked` 分布式通知，App 进程存活、无崩溃日志。
+- **本机装机（2026-11-19）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（1572112 B）+ `codesign --force --deep --sign -` 重签 + `--verify --deep --strict` 通过；Info.plist / 图标 / bundle id / 偏好（版本仍 3.40、wallpaperEnabled 未动）全部保留；回滚备份 `/tmp/vw_bin_backup_before_autopause_1795073012`；重启 PID 69168 → 98337。
+- **待用户 GUI 确认**：① 打一个全屏窗口（或全屏游戏）看菜单栏图标是否变暗 + tooltip 写明原因、退出全屏是否原地续播；② 锁屏/唤醒后回来看壁纸是否自动继续；③ 在壁纸库「设置」里开关三条规则，确认关掉正在生效的规则立即续播。
+- **状态**：已装机、核心状态机已验证，改动留工作区；版本号未动、未提交、未单独发版。第 ② 项（流媒体/网页壁纸）本轮不做，待用户测完 ①③ 后另行排期。
+
+### F13 · 插件改为「App 内一键安装、装完即时生效」：用户点一下即可，无需下载/解压/右键/重启 — 状态：`已装机 / 静默脚本隔离实测通过 / 待 GUI 确认 / 待发版`
+- **日期**：2026-11-18
+- **问题**：F12 虽把下载改成直链，但下载后用户仍要「解压 → 右键打开 .command 绕过 Gatekeeper → 等几分钟装依赖 → 退出并重开 Dòng」共 4 步。用户明确要求「下载了之后就可以直接使用，不要太多步骤」。
+- **方案**：把安装动作搬进 App——用户点一下按钮，App 自己下载安装包 → 解压 → 无交互跑安装脚本 → 清运行时缓存即时生效。全程不离开 App、不右键、不重启。
+- **改动文件**：
+  - 新增 `PerfectLoopInstaller.swift`（一键安装核心：URLSession 下载 → unzip → 生成静默安装脚本 → Process 跑并逐行回进度 → 成功后清缓存；无沙箱、主线程回调；`PerfectLoopInstallError` 承载失败原因）。
+  - `Transcoder.swift`：新增 `invalidatePerfectLoopRuntime()`（清懒加载缓存，`perfectLoopRuntime` 下次重新发现）；`perfectLoopInstallSteps`/`perfectLoopRecommendationWithLink` 文案改「一键安装，装完立即生效，无需重启」。`perfectLoopInstallURL` 保留为唯一 URL 真相源，安装器复用它。
+  - `LibraryWindow.swift`：画面微调面板的「下载安装包」按钮改「一键安装 PerfectLoop 插件」，加进度 label（装时显示每步、失败红色、成功重建面板显示「PerfectLoop 无缝循环」）；action `tuneInstallPluginTapped` 调安装器；移除旧 `tuneDownloadPluginTapped`。
+  - `build.sh`：编译列表加 `PerfectLoopInstaller.swift`。
+  - 静默脚本逻辑与 `dist/perfectloop-plugin/安装 PerfectLoop 插件.command` 同源（装 uv → venv → 清华镜像分批装 7 依赖每批重试 3 次 → 部署源码到 `~/.local/share/VideoWallpaper/perfectloop-plugin/` → 清 pyc → `--check` 自检），但去掉两处 `read` 交互、输出到 stdout 供 UI 显示进度。
+- **验证**：全量编译通过；按字节确认一键安装文案/进度语/新类编入二进制；从 Swift 抽出静默脚本在隔离 HOME（复用 uv 缓存）无交互跑通，4/4 全过、自检 OK、产物部署正确。
+- **装机**：最小替换 `/Applications/Dòng.app` + 重签 verify 通过，回滚 `/tmp/vw_bin_backup_before_f13_1795004762`，重启 PID 69168。
+- **状态**：已装机、核心链路已验证，改动留工作区；版本号未动，未提交、未单独发版。**待用户 GUI 确认**：本机此前已装过插件（自检 OK），面板此时显示「PerfectLoop 无缝循环」、不会有一键安装按钮（正确行为）；要看到按钮需先临时移走测试插件目录。
+
+### F18 · 修「点下载跳到 releases 列表页、用户找不到安装包」：改直链下载 + 写清后续步骤 — 状态：`已装机 / 直链实测 HTTP 200 / 待 GUI 确认 / 待发版`
+- **日期**：2026-11-18
+- **问题**：用户点画面微调面板的「下载并安装 PerfectLoop 插件」按钮，被弹到 GitHub `releases` 列表页，默认展示 v3.40 的 App 更新说明；安装器 zip 藏在需手动展开的 Assets 区，且和 dmg 混在一起。用户原话「我不知道在哪里下载，用户怎么可能知道？」——下载入口形同虚设。
+- **根因**：`Transcoder.perfectLoopInstallURL` 指向列表页 `.../releases`（不是文件直链）；纯文本文案也写「安装说明：.../releases」，把用户往同一个找不到东西的页面引。
+- **改动文件**：
+  - `Transcoder.swift`：`perfectLoopInstallURL` 改为 `.../releases/latest/download/PerfectLoop-Plugin-Installer.zip`（点按钮浏览器立即下载；`latest/download` 自动跟随最新 release 的同名附件）。新增 `perfectLoopInstallSteps`（下载后解压 → 双击 .command → 被拦截则右键→打开）。`perfectLoopRecommendationWithLink` 文案改为「在画面微调面板点『下载插件』，解压后双击安装器」。
+  - `LibraryWindow.swift`：按钮标题改「下载 PerfectLoop 插件安装包 ↗」（点=下载，不再误导成"安装"）；按钮下加一行小字写下载后步骤（关键：用户下了 zip 不知道怎么装=没下）；更新 action 注释。
+- **验证**：直链 `curl -sIL` 与实下载均 HTTP 200、18932 B、随最新版自动指向（两个 release v3.39/v3.40 都带同名附件）；`VW_NO_PRESETS=1 zsh build.sh` 编译通过；按字节确认直链/新文案/步骤文字编入二进制。
+- **装机**：最小替换 `/Applications/Dòng.app` + 重签 verify 通过，回滚 `/tmp/vw_bin_backup_before_f11_1795003886`，重启 PID 64687。
+- **状态**：已装机、已验证直链，改动留工作区；版本号未动（v3.40 已由另一任务发布），未提交、未单独发版。**待用户 GUI 确认**：点按钮应直接开始下载 zip，按钮下应显示三行步骤小字。
 
 ### F10 · 补齐「用户怎么下载」闭环：一键安装器 + 下载入口 — 状态：`已装机 / 安装器隔离实测通过 / 待真机确认 / 待发版`
 - **日期**：2026-11-17
@@ -199,6 +865,91 @@
 - **验证**：渲染对比图（`/tmp/symbols_preview.png`）确认三种配色实际效果，敲定暖橙方案；`swiftc -typecheck` 与 `swiftc -O` 全量编译通过（仅原有 deprecated 警告）。
 - **本机装机（2026-11-18 19:15）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（编译产物 1497328 B），`codesign --force --deep --sign -` + `-v --deep --strict` 通过；偏好 / 图标 / Info.plist / bundle id / 版本未动；重启 PID 48479。回滚备份 `/tmp/vw_bin_backup_before_icons`（14:19 版）。
 - **待用户**：真机确认底栏那排图标在深色模式下是否够亮够清楚。手感 ok 后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F17 · 菜单栏图标悬停自动展开小弹窗（少一次点击） — 状态：`已验证 / 已装机 / 待发版`
+- **日期**：2026-11-19
+- **需求**：原来要点图标打开小弹窗、再点一次"壁纸库"才进库，太绕。改成鼠标悬停在图标上就自动弹出弹窗，直接点里面的"壁纸库"进入。
+- **行为变化**：
+  - 悬停图标 **0.22s** 自动弹出小弹窗（停留才弹，快速划过不弹）。
+  - 面板开着时鼠标移开图标和面板 **0.35s** 自动收起；移到面板上则不收，可以正常点"壁纸库"。
+  - 悬停弹出不抢键盘焦点（不打断用户正在别处打字），点击仍照旧可打开/关闭。
+  - 悬停弹出后 0.7s 内的"顺手点一下图标"不会把面板关掉（避免手抖误关）。
+  - 点图标本身不再被"点外面收起"逻辑抢走，交给按钮正常处理。
+- **改动文件**：
+  - `main.swift` — 新增 `HoverCatcher`（透明子视图，`hitTest` 返回 nil 让点击穿透）与兜底 `StatusHoverProbe`（按钮自身 tracking area，显式 `mouseEntered:`/`mouseExited:` selector）；`buildStatusItem` 挂载两者；新增 `scheduleHoverOpen/cancelHoverOpen/openPanelByHover/startHoverCloseWatcher/checkHoverLeave/buttonScreenFrame`；`togglePanel` 抽出 `ensurePanel()`；`statusClicked` 加 0.7s 防误关冷却；`VW_HOVER_DEBUG=1` 时打印悬停/坐标日志。
+  - `Panel.swift` — `MenuPanelController.show(relativeTo:data:focus:)` 加 `focus` 参（悬停时跳过 `makeKey`）；新增 `passthroughRects`（图标区域内的点击不算"点外面"）；`PanelBody.acceptsFirstMouse` 返回 true（非 key window 下第一次点击也能命中"壁纸库"）。
+- **验证（2026-11-19，真实鼠标轨迹，非模拟事件）**：`VW_HOVER_DEBUG=1` 启动后，用 `CGWarpMouseCursorPosition` 把鼠标移到实测图标坐标 `{796,854,40×24}`：
+  - 进入图标 → 日志 `enter → 排 0.22s` → `panel 已显示 frame={{644,578},{344,276}}`；
+  - 移到面板中心 (816,716) → 只有 `exit → 取消`，**不收起**；
+  - 移到屏幕别处 → `离开 0.35s → 自动收起`；
+  - 快速划过（进入后立即离开）→ `enter` 后 `exit → 取消`，不弹。
+- **本机装机（2026-11-19 17:20）**：`swiftc -O` 全量编译通过（15 个源文件，仅原有 deprecated 警告）；最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（1638272 B），`codesign --force --deep --sign -` + `-v --deep --strict` 通过；偏好 / 图标 / Info.plist / bundle id / 版本未动；正常方式重启 PID 27665。回滚备份 `/tmp/vw_bin_backup_before_hover`。
+- **待用户**：真机把鼠标停在菜单栏果冻上，确认弹窗自动出现、点"壁纸库"能进、移开后自动收。手感 ok 后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F19 · 壁纸重命名（每张可单独改名） — 状态：`已验证 / 已装机 / 待发版`
+- **日期**：2026-11-19
+- **行为**：壁纸库里每张卡悬停时，右上角删除按钮下方多一个**铅笔**按钮，点它在名字那一行原地变成输入框（自动全选），回车提交、ESC 取消、点空处结束。右键菜单也加了「重命名…」。改的是**真实文件名**（扩展名保留），访达里看到的同步变化。
+- **数据同步**：改名后缩略图缓存 jpg 一起改名、内存缓存清掉、`VWTuning.libraryOrder` 里的旧名替换成新名、`currentWallpaperName` 更新；如果改的是**正在播放**的那张，会重建播放器（旧 URL 已失效）。库窗口 reload 一次。
+- **校验规则**：空名 / 含 `/` / 含 `:` / 以 `.` 开头 / 目标已存在 → 拒绝并 beep，**留在编辑态**让用户改；名字没变当成功；只改大小写（macOS 大小写不敏感）走「临时名中转」，不会被误判重名。
+- **改动文件**：
+  - `LibraryWindow.swift` — `WallpaperLibraryDelegate` 加 `libraryRename(index:to:) -> Bool`；`WallpaperCard` 新增 `renameButton`（pencil）+ `renameField`（行内 NSTextField）+ `beginRename/commitRename/endRename`，实现 `NSTextFieldDelegate` 接 ESC；`endHover` 增加 `!renaming` 保护（编辑中不淡出）；`teardown` 清理编辑态；`GalleryView.onRename` 接线；`GalleryThumb.forget(_:)` 清内存缓存；右键菜单加重命名。
+  - `main.swift` — `AppDelegate.libraryRename(index:to:)`：校验 → `moveItem` → 缩略图改名 → 更新数组/存档/当前壁纸 → 必要时 `rebuild()`。
+- **验证（2026-11-19，隔离 support 目录，`VW_RENAME_TEST` 调试入口）**：
+  - 正常改名 `01-老名字.mp4 → 新名A.mp4`：`ok=true`，磁盘实际改名，`libraryOrder` 与 `currentWallpaperName` 同步；
+  - 重名 / 空名 / 含斜杠：均 `ok=false` 且磁盘不动；
+  - 同名：`ok=true` 不动文件；
+  - 只改大小写 `03-test.mp4 → 03-Test.mp4`：`ok=true`，磁盘大小写实际改变；
+  - 真实用户偏好未被测试污染（测试进程的 UserDefaults 与 App 不是同一域，且测试入口带备份/还原）。
+- **本机装机（2026-11-19 19:30）**：`swiftc -O` 全量编译通过；最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（1664816 B），重签 + `-v --deep --strict` 通过；偏好 / 图标 / Info.plist / bundle id / 版本未动；重启 PID 41523。回滚备份 `/tmp/vw_bin_backup_before_rename`。
+- **待用户**：真机悬停卡片点铅笔（或右键「重命名…」）改个名字，确认名字原地可编辑、回车生效、访达里文件同步改名；正在用的那张改完画面应正常继续播。手感 ok 后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F13 · 壁纸自动轮换（随机/顺序 + 多触发条件） — 状态：`逻辑已验证 / 待装机确认 / 待发版`
+- **日期**：2026-11-23
+- **需求**：壁纸可以随机循环，比如每次开机换一张；还要能选别的切换条件、能整体关闭。
+- **行为**：
+  - 设置弹层新增「自动轮换」区块：总开关、「切换方式」（随机 / 顺序下一张）、三个触发条件（**每次启动时切换**、**锁屏解锁时切换**、**从睡眠唤醒时切换**）、「定时切换」下拉（不定时 / 15 分钟 / 30 分钟 / 1 小时 / 3 小时 / 6 小时 / 每天）。
+  - 总开关关闭时，下面所有子项置灰；默认总开关关、方式随机、只勾「每次启动时切换」——不主动改变用户已挑好的固定壁纸。
+  - 只在壁纸已接管桌面（`isShowing`）时轮换；库里只有一张时跳过；随机不会挑到当前这张；顺序按 `index+1` 循环。
+  - 启动那一次延迟 1.2s 执行，避开启动时的桌面重建。
+- **改动文件**：
+  - `Rotation.swift`（新增）— `Rotation` 偏好（键前缀 `VWTuning.`，含 `nextIndex(current:count:mode:)` 纯函数）+ `WallpaperRotator` 调度器（定时器 + `com.apple.screenIsUnlocked` + `NSWorkspace.didWakeNotification` + 设置变更通知）。
+  - `main.swift` — 持有 `rotator`，启动后 `fireLaunchIfNeeded()`；新增 `rotateWallpaper(source:)`、`runRotationSelfTest()`（`VW_ROTATE_TEST=1`）。
+  - `LibraryWindow.swift` — 设置弹层「自动轮换」区块与 6 个动作方法、`updateRotationControlsEnabled()`、`refreshSettingsState()` 同步。
+  - `build.sh` — 编译列表加入 `Rotation.swift`。
+- **验证（2026-11-23）**：
+  - `VW_ROTATE_TEST=1` 自检：默认值 `enabled=false mode=random launch=true interval=0 unlock=false wake=false`；写入读回一致；顺序 `0→1→2→3→0`；随机 30 次**每次都不等于当前**且覆盖全部下标；`count=1 / count=0 / 越界` 均返回 nil。
+  - 设置弹层渲染截图（330×665）：轮换区块标题、总开关、两个下拉、三个开关对齐正常，无重叠/裁切；总开关关闭时下拉正确置灰。
+- **待用户**：真机打开「自动轮换」开关，重启 App 确认换了一张；再试定时/解锁/唤醒条件。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F13.1 · 设置弹层「自动暂停 / 自动轮换」改为可折叠 — 状态：`已装机 / 待真机确认 / 待发版`
+- **日期**：2026-11-23
+- **需求**：这两个区块占的地方太大，弹层太长太挤；改成可折叠、默认收起，需要时再展开。
+- **行为**：
+  - 「自动暂停」「自动轮换」的标题变成可折叠头：整行可点（指针变手型），右侧一个箭头 + **状态摘要**（自动暂停显示「N 项开启 / 全部关闭」，自动轮换显示「已开启 · 随机 / 已关闭」），收起也能一眼看到现状。
+  - **默认收起**：每次打开设置弹层都回到收起态；展开后弹层自动变高，收起自动变矮。
+  - 收起时子项 `isHidden`，NSStackView 自动脱开，不再占高度与间距。
+- **改动文件**：`LibraryWindow.swift` — 新增 `SettingsSectionHeader` 可折叠标题组件；`LibraryWindowController` 新增 `SettingsSection` 枚举、`appendRow/rows(for:)/toggleSettingsSection/resizeSettingsPopover/refreshSectionHeaders`；`pauseRow` 改为 `settingsRow(_:on:action:section:)` 并登记分组；`refreshSettingsState` 与各开关 action 同步摘要；`debugSnapshotSettings` 支持 `VW_SETTINGS_EXPAND=1` 渲染展开态。
+- **验证（2026-11-23）**：`VW_SETTINGS_SHOT` 渲染两态：
+  - 收起态 **330×299**（改前 665），两个标题行各带 `chevron.right` 与摘要，子项全部隐藏；
+  - 展开态 **330×588**，箭头变 `chevron.down`，自动暂停 3 个开关 + 自动轮换 6 项完整显示，无重叠/裁切；
+  - 全量 `swiftc -O` 编译通过。
+- **本机装机（2026-11-23 20:49）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（2030952 B），重签 + `-v --deep --strict` 通过；重启 PID 87403。回滚备份 `/tmp/vw_bin_backup_before_fold`。
+- **待用户**：打开设置看两行折叠是否清爽，点开确认能展开、箭头和高度都对。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F14 · 设置里新增「反馈」入口（悬停展开飞书群） — 状态：`已装机 / 待真机确认 / 待发版`
+- **日期**：2026-11-25
+- **需求**：用户下完软件想反馈却找不到入口。要求入口只显示「反馈」两个字，鼠标悬停或点击后才看飞书群信息。
+- **行为**：
+  - 设置弹层底部版本行：`Dòng x.y（build）` 右边加灰色的**「反馈」**两字（不占额外高度、不加任何说明文字），右边仍是「检查更新」。
+  - **悬停**：上方浮出一张深色小卡片（238×88），四行：`Dòng 用户反馈群` / `飞书群 · 问题反馈与功能建议` / `applink.feishu.cn/client/chat/…` / 橙色 `点击「反馈」加入`；鼠标移开 0.15s 后淡出。
+  - **点击**：直接 `NSWorkspace.open` 打开飞书群邀请链接（装了飞书会直接进群），同时埋点 `feedback_open`。
+  - 卡片会按弹层边界做左右/上下避让；卡片自身不吃鼠标事件，避免"移到卡片上就闪没"。
+- **改动文件**：`LibraryWindow.swift` — 新增 `FeedbackLink`（文字 + tracking area + 悬停卡片）与 `FeedbackTip`（纯展示卡片）；`makeSettingsController` 的 versionRow 接入；`debugSnapshotSettings` 支持 `VW_FEEDBACK_TIP=1` 渲染悬停态。
+- **验证（2026-11-25）**：渲染两态核对：
+  - 收起态 330×299：版本行显示 `Dòng —（—）  反馈   [检查更新]`，只有两个字、无多余信息；
+  - 悬停态：卡片四行清晰、行距均匀、无重叠；**第一版用 0.82 / 0.96 半透明，放大后能看到底下「自动暂停/自动轮换」标题透出灰影**，改为完全不透明深色（0.10,0.10,0.11）+ 1pt 细边后残影消失。
+- **本机装机（2026-11-25 20:15）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（2195936 B），重签 + `-v --deep --strict` 通过；重启 PID 36237。回滚备份 `/tmp/vw_bin_backup_before_feedback`。
+- **待用户**：打开设置 → 底部悬停「反馈」看卡片，点一下确认能拉起飞书进群。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
 
 ### D1 · GitHub README 增加飞书用户群入口 — 状态：`已上线（文档，无需发版）`
 - **日期**：2026-11-16
@@ -435,7 +1186,42 @@
 - [x] **【已完成·GitHub】** DMG 已上传到 GitHub Release `v3.39`（2026-11-17 19:40）：资产 `Dong-3.39.dmg`，size `61527463`，线上 digest `sha256:7fb0b5b3906cc9a8735ea8dd22a3c1d182635a3a5356448501720b707ee80e2b` 与本地一致，Release 为 Latest，说明含 ad-hoc 签名与 AI 提示词安装指引。`https://github.com/zhang-1-kael/dong/releases/tag/v3.39`
 - [x] 把 `Unreleased` 归档为 v3.39 发布条目（见下方 Released 段）；历史条目按约定保留不删。
 
-## 合并/发版检查清单（v3.40 · 2026-11-18）
+## 合并/发版检查清单（v3.43 · 2026-11-24）
+
+- [x] 本次仅含截断修复：F20（片尾）+ F20.1（参数原样）+ F20.2（片头）。
+- [x] 版本号：`Info.plist` → **3.43 / 65**（3.42 已登记服务器，且其包含未完成新功能、无片头修复）。
+- [x] 十语言 README 3.42 → 3.43 同步（各 3 处），无残留。
+- [x] 剥离未完成功能：构建时用 `_StubFeatures.swift` 桩顶替 Account/AccountPopover/Rotation/SyncCenter/SyncEngine + 隐藏设置里「自动轮换」分组入口；**打包后已还原 LibraryWindow.swift / build.sh、删除桩文件，源码零改动**。
+- [x] 全量打包 + 校验：`dist/Dòng-3.43.dmg`，size `61641840`，sha256 `34212dd782fb9b1fc0533d1f09a15634526061e3a742ee8831eba32cb834acd5`，verify VALID；包内实测用户 32.3s 原视频 → 32.67s 完整。
+- [ ] **【待做·GitHub】** Release `v3.43` 上传 DMG。
+- [ ] **【待用户手动·服务器】** `/api/update/check` 更新到 3.43（当前仍指向 3.42 的 61569988）。
+- [ ] **【待做】** git 提交 + tag `v3.43` + push；云端台账同步。
+
+## 合并/发版检查清单（v3.42 · 2026-11-23）
+
+- [x] 本次仅含 F20（本地视频不再误裁片尾）+ F20.1（参数回归原样）。
+- [x] 版本号：`Info.plist` → **3.42 / 64**（3.41 已登记服务器，且其包不含修复，故升版）。
+- [x] 十语言 README 3.41 → 3.42 同步（各 3 处），复核无残留。
+- [x] 全量打包 + 校验：`dist/Dòng-3.42.dmg`，size `61641840`，sha256 `34212dd782fb9b1fc0533d1f09a15634526061e3a742ee8831eba32cb834acd5`，verify VALID。挂载复核版本 3.42/64、截断修复符号在、**包内二进制实测 24s→24.37s / 30fps**、签名通过。
+- [ ] **【待做·GitHub】** Release `v3.42` 上传 DMG。
+- [ ] **【待用户手动·服务器】** `/api/update/check` 更新到 3.42。
+- [ ] **【待做】** git 提交 + tag `v3.42` + push；云端台账同步。
+- 备注：v3.41 未做 GitHub Release / git tag（直接跳到 3.42），其功能已全部包含在 3.42 包内。
+
+## 合并/发版检查清单（历史：v3.41 · 2026-11-20，已登记官网服务器）
+
+- [x] 核对本次条目：F13 / F14 / F14.2 / F15 / F16 / F17 / F18 / F19（F14.1 已被 F14.2 撤销，保留作历史）。
+- [x] 修正重复编号：`F11` 菜单栏悬停 → **F17**；`F12` 下载直链 → **F18**；`F12` 壁纸重命名 → **F19**（原 F11 底栏图标、F12 重命名冲突由多任务并行造成）。
+- [x] 确认最终版本号：`Info.plist` → **3.41 / 63**（3.40 已发布，必须升版用户才能收到更新）。
+- [x] 全量构建：`zsh package.sh` 11-20 15:40 成功（仅项目原有 deprecated 警告）。
+- [x] `package.sh` 出 DMG → `dist/Dòng-3.41.dmg`，size `61569984`，`hdiutil verify` VALID，sha256 `b8b13bbd3d43e83b29204508a5b72ca7cf176919d0aff4a46a096b9fa195b7e2`。
+- [x] 挂载复核：版本 3.41/63、API 正确、内置 ffmpeg + yt-dlp、新功能符号齐全（WebStreams 24 / WebWallpaperView 6 / PlaybackPolicy 99 / PerfectLoopInstaller 46 / looksLikeImageLink / importImageLink）、ad-hoc 深度签名校验通过。
+- [x] 版本 3.40 → 3.41 已同步十语言 README（各 2 行 3 处），复核无 3.40 残留。
+- [ ] **【待做·GitHub】** 创建 Release `v3.41` 并上传 DMG（英文名 `Dong-3.41.dmg`）+ 插件安装器。
+- [ ] **【待用户手动·服务器】** 更新 `/api/update/check` 到 3.41（写接口 401 需鉴权，AI 无凭据）。
+- [ ] **【待做】** git 提交 + tag `v3.41` + push；云端台账同步。
+
+## 合并/发版检查清单（历史：v3.40 · 2026-11-18）
 
 - [x] 上面 F10（插件下载入口）/ F5.5 / F5.6 / F11（底栏图标调亮）状态已核对；F10 重号已修正——「底栏图标调亮」改编号为 F11，与「插件下载入口 F10」区分。
 - [x] 确认最终版本号：`Info.plist` → **3.40 / 62**（用户 11-18 决定升版，不再沿用 3.39）。
@@ -455,6 +1241,59 @@
 ---
 
 ## Released
+
+### v3.43 / build 65 — 2026-11-24
+
+**主题：只含截断修复的轻量版（不含未完成新功能）。**
+
+- **本地视频完整保留（F20 + F20.1 + F20.2）**：
+  - 片尾：不再把正常静止收尾误判成「片尾卡」裁掉（`autoTrimIntroOutro` 控制，本地导入关闭）。
+  - 片头：同样纳入保护（F20.2 修复「开头被裁 7 秒」）。
+  - 参数：1.00× 原速、帧率跟随源、整段循环、无淡化/明暗/时长限制。
+- **未编入的功能（并行任务未完成）**：账号登录 / 云同步 / 自动轮换（`Account.swift`、`AccountPopover.swift`、`Rotation.swift`、`SyncCenter.swift`、`SyncEngine.swift`）。构建时用桩顶替并隐藏设置里的「自动轮换」入口，**打包后已还原源码，未改动任何项目文件**。
+- **实测（用户原视频 32.30s / 1280×800 / 30fps）**：输出 **32.67s 完整**，分辨率帧率不变（+0.37s 循环补帧）。
+
+**发布产物与交付参数：**
+- DMG：`dist/Dòng-3.43.dmg`，size `61641840`，sha256 `34212dd782fb9b1fc0533d1f09a15634526061e3a742ee8831eba32cb834acd5`
+- `version` = `3.43`，`build` = `65`
+- `download` = `https://dongisgood.coze.site/api/download?v=3.43&channel=stable`
+- 注意：服务器当前仍指向 3.42（61569988），需手动改为 3.43。
+
+### v3.42 / build 64 — 2026-11-23
+
+**主题：修复本地视频被误裁片尾 + 参数回归「原样」。**
+
+- **本地视频不再被误裁片尾（F20）**：`detectEndCard` 曾把「正常的静止收尾」判成「片尾卡」裁掉（最多 40% 时长）。现在本地导入（拖拽 / 选择文件 / CLI `--import`）**完全不裁片尾**；链接下载的网络素材仍保留自动裁片尾卡。同时收紧检测阈值（`still` 下限 0.25→0.08、裁切上限 40%→min(8s, 25%)）并加 `baseline >= 1.0` 保护。
+- **参数默认回归原样（F20.1）**：不加速（`speed` 1.00×）、帧率跟随源（`outputFPS` 0）、整段循环、无首尾淡化、无明暗调整、不限时长。代码本无自动调速逻辑，1.31× 与固定 60fps 为历史残留偏好，已清除。
+- **实测**：24s（结尾 6s 静止）视频：修复前 18.35s → 修复后 **24.37s**；12s/30fps 源 → 输出 12.37s/**30fps**（不再补到 60）。
+- **画质**：`targetSize` 只缩不放、CRF 18 高质量；内容/时长/速度/帧率保持原样，仅做一次为无缝循环的高质量重编码。
+- **构建说明（hotfix 专用）**：账号登录 / 云同步 / 自动轮换（`Account.swift`、`AccountPopover.swift`、`Rotation.swift`、`SyncCenter.swift`、`SyncEngine.swift`，并行任务未完成）**未编入本包**——构建时临时用 `_StubFeatures.swift` 桩顶替 + 注释掉设置里的「自动轮换」分组入口，打包后已全部还原，源码未改动。后续新功能完成后再单独发版。
+
+**发布产物与交付参数：**
+- DMG：`dist/Dòng-3.42.dmg`，size `61641840`，sha256 `34212dd782fb9b1fc0533d1f09a15634526061e3a742ee8831eba32cb834acd5`
+- `version` = `3.42`，`build` = `64`
+- `download` = `https://dongisgood.coze.site/api/download?v=3.42&channel=stable`
+- 注意：**已入库的旧壁纸不会自动重转**，需重新导入才生效。
+
+### v3.41 / build 63 — 2026-11-20
+
+**主题：网页壁纸 + 图片直链 + 自动暂停让路 + 插件一键安装 + 交互细节。**
+
+- **网页 / 流媒体壁纸（F15，新增 `WebWallpaper.swift`）**：贴任意网页链接（YouTube / Shadertoy / 在线播放页）不下载不转码，直接用 WKWebView 渲染成动态壁纸；YouTube 自动转 embed 静音循环、Shadertoy 转 embed 无控件、普通网页原样加载。库里以虚拟 URL `dongweb://` 存储，缩略图用地球图标。
+- **图片直链识别（F16）**：右键「复制图片地址」的链接直接下载做成静态壁纸。修掉两个根因——① 旧逻辑把图片链接当网页丢给 WKWebView，成败取决于 WebView 认不认；② 扩展名可能在 path / query / 带参数三种形态。现在按 `looksLikeImageLink` 识别后走 URLSession 下载 + ImageIO 校验 + `importStillImage`，同一条链接每次结果一致。CLI 也支持。
+- **自动暂停策略 + 状态可视化（F14 / F14.2，新增 `PlaybackPolicy.swift`）**：前台有程序全屏时壁纸自动暂停让出资源、退出全屏自动续播；只暂停/续播 AVPlayer，不 teardown 窗口。暂停态显示静态果冻图标（F14.1 的橙色暂停符号方案已撤销）。
+- **插件 App 内一键安装（F13，新增 `PerfectLoopInstaller.swift`）**：点一下就在 App 内装好 PerfectLoop，无需下载 zip / 解压 / 右键打开 / 重启。
+- **菜单栏图标悬停展开（F17）**：鼠标悬停菜单栏图标自动弹出小面板，少点一次。
+- **下载改直链（F18）**：修「点下载跳到 releases 列表页、用户找不到安装包」，改为直链下载并写清后续步骤。
+- **壁纸重命名（F19）**：壁纸库里每张壁纸可单独改名。
+- **编号整理**：F11/F12 曾被多任务并行重复占用，本次新增条目重编为 F17/F18/F19。
+
+**发布产物与交付参数：**
+- DMG：`dist/Dòng-3.41.dmg`，size `61569984`，sha256 `b8b13bbd3d43e83b29204508a5b72ca7cf176919d0aff4a46a096b9fa195b7e2`
+- `version` = `3.41`，`build` = `63`
+- `download` = `https://dongisgood.coze.site/api/download?v=3.41&channel=stable`
+- 签名：ad-hoc（未公证）；校验 `hdiutil verify` VALID、深度签名校验通过。
+- 已知待验：F15 网页壁纸与 F16 图片直链未经过用户 GUI 点击确认（F16 已 CLI + 装机验证）。
 
 ### v3.40 / build 62 — 2026-11-18
 

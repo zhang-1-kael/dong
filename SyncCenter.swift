@@ -78,21 +78,23 @@ final class SyncCenter {
                                      userId: "demo",
                                      token: parts.count > 1 ? parts[1] : "demo",
                                      quotaBytes: 2 * 1024 * 1024 * 1024)
-            // 第三个字段是进度百分比：截「同步中」的界面用，纯展示，不发请求
-            if parts.count > 2, let pct = Double(parts[2]) {
+            if parts.count > 2 {
                 previewOnly = true
-                previewOnly = true
-                var p = SyncEngine.Progress()
-                p.text = "正在上传 · 🌬️"
-                p.fraction = pct
-                p.done = 7
-                p.total = 22
-                p.bytesDone = Int64(pct * 443 * 1024 * 1024)
-                p.bytesTotal = 443 * 1024 * 1024
-                progress = p
-                status = .syncing(p.text)
-                // 摆拍用：给编辑资料面板一点内容
+                // 摆拍用：给资料页一点内容
                 profile = AccountAPI.Profile(email: parts[0], displayName: "Kael", hasAvatar: false)
+                if let pct = Double(parts[2]) {
+                    var p = SyncEngine.Progress()
+                    p.text = "正在上传 · 🌬️"
+                    p.fraction = pct
+                    p.done = 7
+                    p.total = 22
+                    p.bytesDone = Int64(pct * 443 * 1024 * 1024)
+                    p.bytesTotal = 443 * 1024 * 1024
+                    progress = p
+                    status = .syncing(p.text)
+                } else if parts[2] == "idle" {
+                    status = .done("已同步")
+                }
             }
         }
         // 摆拍模式下面已经在上面设成 .syncing 了，别再覆盖回 idle
