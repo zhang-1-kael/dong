@@ -193,10 +193,44 @@ enum AccountAPI {
 
     // MARK: 账号
 
-    static func register(email: String, password: String) -> Result<AccountSession, AccountError> {
-        let body = try? JSONSerialization.data(withJSONObject: ["email": email, "password": password])
+    static func register(email: String, password: String,
+                         code: String = "") -> Result<AccountSession, AccountError> {
+        var payload: [String: Any] = ["email": email, "password": password]
+        if !code.isEmpty { payload["code"] = code }
+        let body = try? JSONSerialization.data(withJSONObject: payload)
         let res = send(request("/api/auth/register", method: "POST", body: body))
         return decodeSession(res)
+    }
+
+    /// 服务端公开配置：发信开没开、注册要不要验证码。
+    /// 没开通就别在界面上摆一个点了会报错的输入框。
+    struct ServerConfig {
+        var mail: Bool
+        var mailCodeRequired: Bool
+    }
+
+    static func authConfig() -> Result<ServerConfig, AccountError> {
+        switch send(request("/api/auth/config")) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            let o = json(data)
+            return .success(ServerConfig(mail: o["mail"] as? Bool ?? false,
+                                         mailCodeRequired: o["mailCodeRequired"] as? Bool ?? false))
+        }
+    }
+
+    /// 发注册验证码。服务端没配发信通道时返回 501，界面据此把验证码那一行收起来。
+    static func sendEmailCode(email: String, purpose: String = "register") -> Result<Void, AccountError> {
+        let body = try? JSONSerialization.data(withJSONObject: ["email": email, "purpose": purpose])
+        switch send(request("/api/auth/email/code", method: "POST", body: body)) {
+        case let .failure(e):
+            return .failure(e)
+        case let .success((data, code)):
+            guard (200..<300).contains(code) else { return .failure(errorMessage(data, code)) }
+            return .success(())
+        }
     }
 
     static func login(email: String, password: String) -> Result<AccountSession, AccountError> {

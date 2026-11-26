@@ -20,6 +20,8 @@ const fsp = require("node:fs/promises");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const storage = require("./storage");
+const emailcheck = require("./emailcheck");
+const mail = require("./mail");
 const snapshot = require("./snapshot");
 
 const PORT = Number(process.env.SYNC_PORT || process.env.PORT || 8787);
@@ -29,6 +31,14 @@ const MAX_ASSET = Number(process.env.DONG_MAX_ASSET_MB || 512) * 1024 ** 2;
 /// 头像借用同一套存储，固定用这个 assetId，避免和壁纸混在一起
 const AVATAR_ID = "__avatar__";
 const TOKEN_DAYS = Number(process.env.DONG_TOKEN_DAYS || 60);
+// 是否「注册必须过邮箱验证码」。默认跟随发信是否可用；
+// 想先只做域名校验、等新版客户端铺开再强制，就设 MAIL_REQUIRE_CODE=0。
+const MAIL_REQUIRE_CODE = String(process.env.MAIL_REQUIRE_CODE || "").trim();
+
+/// 注册是否必须过邮箱验证码：发信可用 + 没被显式关掉
+function codeRequired() {
+  return mail.isConfigured() && MAIL_REQUIRE_CODE !== "0";
+}
 
 // 简易限流：key = 客户端 IP，滑动窗口计数。托管平台没有 Nginx，只能自己兜一层。
 // 注意反代场景必须用 X-Forwarded-For，否则所有请求都来自 127.0.0.1，会把所有人一起锁死。
@@ -36,6 +46,7 @@ const LIMITS = {
   register: { max: 5, windowMs: 60_000 },
   login: { max: 12, windowMs: 60_000 },
   reset: { max: 6, windowMs: 60_000 },
+  emailcode: { max: 6, windowMs: 60_000 },
 };
 const hits = new Map(); // "ip|bucket" -> { count, resetAt }
 
@@ -93,6 +104,35 @@ async function writeJson(file, value) {
   await fsp.mkdir(path.dirname(file), { recursive: true });
   await fsp.writeFile(tmp, JSON.stringify(value));
   await fsp.rename(tmp, file);
+}
+
+// ── 邮箱验证码（只在内存里：10 分钟就过期的东西，不值得落盘） ─────
+const mailCodes = new Map();   // "email|purpose" -> { code, exp, tries, sentAt }
+const codeHistory = new Map(); // email -> [发送时间戳]
+const CODE_TTL = 10 * 60_000;  // 有效期 10 分钟
+const CODE_GAP = 60_000;       // 同一地址 60 秒才能再发
+const CODE_HOURLY = 5;         // 同一地址每小时最多 5 封
+
+function keyOf(email, purpose) { return `${email}|${purpose}`; }
+
+/// 核销验证码：用掉即作废；错 5 次也作废
+function takeCode(email, purpose, code) {
+  const key = keyOf(email, purpose);
+  const rec = mailCodes.get(key);
+  if (!rec) return { ok: false, message: "验证码不对或已过期，重新发一个" };
+  if (Date.now() > rec.exp) {
+    mailCodes.delete(key);
+    return { ok: false, message: "验证码过期了，重新发一个" };
+  }
+  rec.tries += 1;
+  if (rec.tries > 5) {
+    mailCodes.delete(key);
+    return { ok: false, message: "试错太多次，重新发一个验证码" };
+  }
+  const got = String(code || "").replace(/\s/g, "");
+  if (got !== rec.code) return { ok: false, message: "验证码不对" };
+  mailCodes.delete(key);
+  return { ok: true };
 }
 
 async function initStore() {
@@ -233,11 +273,71 @@ async function handle(req, res) {
       ok: healthy,
       time: Date.now(),
       storage: gatewayHealth.mode,
+      // 排障用：看邮箱验证是不是真开着（off = 只做域名真实性校验）
+      mail: mail.providerName(),
+      mailCodeRequired: codeRequired(),
       snapshot: snapshot.status().enabled ? "on" : "off",
       // 排障用：远程就能看出快照到底推没推、恢复有没有跑
       snapDetail: snapshot.status(),
       ...(healthy ? {} : { error: gatewayHealth.error }),
     });
+  }
+
+  // ---- 公开配置（客户端据此决定要不要显示「验证码」那一行）----
+  if (p === "/api/auth/config" && method === "GET") {
+    return send(res, 200, { mail: mail.isConfigured(), mailCodeRequired: codeRequired() });
+  }
+
+  // ---- 发送邮箱验证码（不需要登录）----
+  // purpose=register 注册验证；purpose=reset 将来做「邮件找回密码」用。
+  // 没配发信通道时直接 501，客户端据此把验证码那一行隐藏掉、继续用域名校验。
+  if (p === "/api/auth/email/code" && method === "POST") {
+    if (!allow(req, "emailcode")) return fail(res, 429, "试得太快了，等一分钟再试");
+    let body;
+    try {
+      body = JSON.parse(await readBody(req) || "{}");
+    } catch {
+      return fail(res, 400, "请求格式不对");
+    }
+    const email = emailcheck.normalize(body.email);
+    const purpose = body.purpose === "reset" ? "reset" : "register";
+    if (!validEmail(email)) return fail(res, 400, "邮箱格式不对");
+
+    const chk = await emailcheck.check(email);
+    if (!chk.ok) return fail(res, 400, chk.message);
+
+    if (purpose === "register" && accounts[email]) {
+      return fail(res, 409, "这个邮箱已经注册过了");
+    }
+    // 找回密码不透露邮箱是否注册过：假装发了
+    if (purpose === "reset" && !accounts[email]) {
+      return send(res, 200, { ok: true, cooldown: CODE_GAP / 1000 });
+    }
+    if (!mail.isConfigured()) return fail(res, 501, "邮箱验证暂未开通");
+
+    const now = Date.now();
+    const prev = mailCodes.get(keyOf(email, purpose));
+    if (prev && now - prev.sentAt < CODE_GAP) {
+      const wait = Math.ceil((CODE_GAP - (now - prev.sentAt)) / 1000);
+      return fail(res, 429, `别急，${wait} 秒后再试`);
+    }
+    const hist = (codeHistory.get(email) || []).filter((t) => now - t < 3600_000);
+    if (hist.length >= CODE_HOURLY) {
+      return fail(res, 429, "这个邮箱收得有点多了，过一会儿再试");
+    }
+
+    const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+    const r = await mail.sendCode(email, code, purpose);
+    if (!r.ok) return fail(res, 502, r.error || "验证码发送失败");
+
+    mailCodes.set(keyOf(email, purpose), { code, exp: now + CODE_TTL, tries: 0, sentAt: now });
+    hist.push(now);
+    codeHistory.set(email, hist);
+
+    const payload = { ok: true, cooldown: CODE_GAP / 1000 };
+    // 只有本地联调（console 模式 + 显式开关）才回显验证码，线上绝不能回
+    if (r.dev && process.env.MAIL_DEV_ECHO === "1") payload.devCode = code;
+    return send(res, 200, payload);
   }
 
   // ---- 注册 ----
@@ -255,6 +355,20 @@ async function handle(req, res) {
     if (password.length < 8) return fail(res, 400, "密码至少 8 位");
     if (accounts[email]) return fail(res, 409, "这个邮箱已经注册过了");
 
+    // 域名必须真的存在、真的能收信——只校验格式的话，asdf@asdf.com 也能注册成功
+    const chk = await emailcheck.check(email);
+    if (!chk.ok) return fail(res, 400, chk.message);
+
+    // 开了发信就必须过验证码（证明这个邮箱确实能收到信）；没开就只做上面的域名校验
+    const mailOn = codeRequired();
+    if (mailOn) {
+      if (!String(body.code || "").trim()) {
+        return fail(res, 400, "请先获取邮箱验证码，再注册");
+      }
+      const v = takeCode(email, "register", body.code);
+      if (!v.ok) return fail(res, 400, v.message);
+    }
+
     const salt = crypto.randomBytes(16).toString("hex");
     const user = {
       id: crypto.randomUUID(),
@@ -262,6 +376,8 @@ async function handle(req, res) {
       hash: scrypt(password, salt),
       createdAt: Date.now(),
       quotaBytes: QUOTA_BYTES,
+      // 只有真的收过验证码才算已验证；没开发信时先记 false，将来可以登录后补验
+      emailVerified: mailOn,
     };
     accounts[email] = user;
     await writeJson(F.accounts, accounts);

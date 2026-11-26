@@ -205,6 +205,16 @@ final class AccountPageController: NSViewController {
     private var authSubtitle: NSTextField?
     private var isRegister = false
 
+    // 注册验证码（服务端没开通发信时整行隐藏，只保留域名真实性校验）
+    private var authCode: AccountFieldBox?
+    private var authSend: AccountButton?
+    private var authCodeRow: NSView?
+    private var mailUnavailable = false
+    /// 只问一次服务端「发信开没开」
+    private static var mailKnown = false
+    private var codeLeft = 0
+    private var codeTimer: Timer?
+
     // 已登录主页
     private var profAvatar: AvatarView?
     private var profName: NSTextField?
@@ -293,6 +303,8 @@ final class AccountPageController: NSViewController {
             case "reset": page = .reset
             case "profile": page = .profile
             case "auth": page = .auth
+            case "register": page = .auth; isRegister = true
+            case "register": page = .auth; isRegister = true
             default: break
             }
             didForceDebugPage = true
@@ -361,6 +373,7 @@ final class AccountPageController: NSViewController {
     private func clearRefs() {
         authEmail = nil; authPassword = nil; authConfirm = nil; authStatus = nil
         authButton = nil; authSwitch = nil; authTitle = nil; authSubtitle = nil
+        authCode = nil; authSend = nil; authCodeRow = nil
         profAvatar = nil; profName = nil; profEmail = nil; profStatus = nil
         syncSummary = nil; syncQuota = nil; syncBar = nil; syncFoot = nil; syncButton = nil
         editAvatar = nil; editName = nil; editStatus = nil; editSave = nil; editRemove = nil
@@ -481,6 +494,43 @@ final class AccountPageController: NSViewController {
         fullWidth(email, in: stack, spacing: 8)
         authEmail = email
 
+        if isRegister && !Self.mailKnown { loadMailConfig() }
+
+        // 注册时要证明这个邮箱真能收信：验证码一行。服务端没开发信就整行不出现。
+        if isRegister && !mailUnavailable {
+            let row = NSView()
+            row.translatesAutoresizingMaskIntoConstraints = false
+            stack.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+            row.heightAnchor.constraint(equalToConstant: 34).isActive = true
+            stack.setCustomSpacing(8, after: row)
+            authCodeRow = row
+
+            let code = AccountFieldBox(placeholder: "邮箱验证码")
+            code.translatesAutoresizingMaskIntoConstraints = false
+            row.addSubview(code)
+            authCode = code
+
+            let send = AccountButton(title: "发送验证码", kind: .quiet)
+            send.target = self
+            send.action = #selector(sendEmailCode)
+            send.translatesAutoresizingMaskIntoConstraints = false
+            send.titleAlignment = .right
+            row.addSubview(send)
+            authSend = send
+
+            NSLayoutConstraint.activate([
+                code.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+                code.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                code.trailingAnchor.constraint(equalTo: send.leadingAnchor, constant: -10),
+                send.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+                send.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+                send.widthAnchor.constraint(equalToConstant: 92),
+                send.heightAnchor.constraint(equalToConstant: 34),
+            ])
+            applyCodeCountdown()
+        }
+
         let password = AccountFieldBox(placeholder: "密码（至少 8 位）", secure: true)
         password.field.target = self
         password.field.action = #selector(doAuth)
@@ -579,8 +629,19 @@ final class AccountPageController: NSViewController {
         authButton?.updateTitle(isRegister ? "注册中…" : "登录中…")
         let reg = isRegister
 
+        var code = ""
+        if isRegister && !mailUnavailable {
+            code = (authCode?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard code.count >= 4 else {
+                authButton?.setEnabled(true)
+                authButton?.updateTitle("注册并开始同步")
+                showAuthError("先点右边「发送验证码」，把收到的 6 位数字填进来")
+                return
+            }
+        }
+
         DispatchQueue.global(qos: .userInitiated).async {
-            let r = reg ? AccountAPI.register(email: email, password: pw)
+            let r = reg ? AccountAPI.register(email: email, password: pw, code: code)
                         : AccountAPI.login(email: email, password: pw)
             DispatchQueue.main.async {
                 self.authButton?.setEnabled(true)
@@ -597,7 +658,86 @@ final class AccountPageController: NSViewController {
         }
     }
 
+    // MARK: 注册验证码
+
+    @objc private func sendEmailCode() {
+        let email = (authEmail?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard email.contains("@") else { showAuthError("先填邮箱，再发验证码"); return }
+        authSend?.setEnabled(false)
+        authSend?.updateTitle("发送中…")
+        showAuthStatus("正在发送…", color: Ink.tertiary)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.sendEmailCode(email: email, purpose: "register")
+            DispatchQueue.main.async {
+                switch r {
+                case .success:
+                    self.codeLeft = 60
+                    self.startCodeTimer()
+                    self.showAuthStatus("验证码已发到 \(email)，10 分钟内有效", color: .systemGreen)
+                    self.authCode?.field.window?.makeFirstResponder(self.authCode?.field)
+                case let .failure(e):
+                    // 501 = 服务端还没配发信通道：这一行收起来，直接注册
+                    if case let .http(code, _) = e, code == 501 {
+                        self.mailUnavailable = true
+                        self.authSend?.setEnabled(true)
+                        self.render()
+                        return
+                    }
+                    self.authSend?.setEnabled(true)
+                    self.authSend?.updateTitle("发送验证码")
+                    self.showAuthError(e.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// 问服务端：发信通道开没开。没开就把验证码那行藏掉（只做域名真实性校验）。
+    private func loadMailConfig() {
+        DispatchQueue.global(qos: .utility).async {
+            guard case let .success(cfg) = AccountAPI.authConfig() else { return }
+            DispatchQueue.main.async {
+                Self.mailKnown = true
+                let unavailable = !cfg.mailCodeRequired
+                guard unavailable != self.mailUnavailable else { return }
+                self.mailUnavailable = unavailable
+                if self.page == .auth, self.isRegister { self.render() }
+            }
+        }
+    }
+
+    private func startCodeTimer() {
+        codeTimer?.invalidate()
+        applyCodeCountdown()
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            self.codeLeft = max(0, self.codeLeft - 1)
+            self.applyCodeCountdown()
+            if self.codeLeft == 0 { timer.invalidate(); self.codeTimer = nil }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        codeTimer = t
+    }
+
+    private func applyCodeCountdown() {
+        guard let send = authSend else { return }
+        if codeLeft > 0 {
+            send.setEnabled(false)
+            send.updateTitle("\(codeLeft) 秒后重发")
+        } else {
+            send.setEnabled(true)
+            send.updateTitle("发送验证码")
+        }
+    }
+
+    private func showAuthStatus(_ msg: String, color: NSColor) {
+        authStatus?.stringValue = msg
+        authStatus?.textColor = color
+        authStatus?.isHidden = false
+    }
+
     private func showAuthError(_ msg: String) {
+        authStatus?.textColor = .systemRed
         authStatus?.stringValue = msg
         authStatus?.isHidden = false
     }

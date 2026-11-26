@@ -35,6 +35,15 @@ node server.js            # 监听 :8787，数据写到 ./data
 | `SYNC_INTERNAL_TOKEN` | 无 | gateway 模式的内部凭证，**由部署方注入，仓库里不存** |
 | `DONG_GATEWAY_DOWNLOAD` | `redirect` | `redirect` 直接 302 给客户端直连对象存储；`pipe` 由本进程转发 |
 | `DONG_GATEWAY_STRICT` | 未设 | 设 `1` 时，gateway 自检失败直接退出（默认只报错不退出） |
+| `MAIL_PROVIDER` | 未设 | `console` 只打日志 / `resend` / `aliyun`；不设＝邮箱验证未开通（仍做域名真实性校验） |
+| `MAIL_FROM` | 无 | 发信地址（需是已验证的发信域名下的邮箱） |
+| `MAIL_FROM_NAME` | `Dòng` | 发件人显示名 |
+| `MAIL_RESEND_KEY` | 无 | Resend API Key（`MAIL_PROVIDER=resend`） |
+| `MAIL_ALIYUN_KEY_ID` / `MAIL_ALIYUN_KEY_SECRET` | 无 | 阿里云 AccessKey（`MAIL_PROVIDER=aliyun`，邮件推送 DirectMail） |
+| `MAIL_ALIYUN_REGION` | `cn-hangzhou` | 阿里云邮件推送区域 |
+| `MAIL_ALIYUN_TEMPLATE` | 无 | 阿里云控制台里建的发信模板 ID（阿里云要求用模板发信） |
+| `MAIL_REQUIRE_CODE` | 跟随发信 | 设 `0` 可以「能发信但不强制验证码」，用于客户端还没升级时的过渡 |
+| `MAIL_DEV_ECHO` | 未设 | 设 `1` 且 `console` 模式下，验证码接口会回显 `devCode`（**只能本地用**） |
 
 ### 放到服务器上
 
@@ -111,6 +120,7 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 | 接口 | 上限 |
 |---|---|
 | `POST /api/auth/register` | 5 次 / 分钟 / IP |
+| `POST /api/auth/email/code` | 6 次 / 分钟 / IP；另有同地址 60 秒冷却 + 每小时 5 封 |
 | `POST /api/auth/login` | 12 次 / 分钟 / IP |
 
 超了返回 `429 {"error":"试得太快了，等一分钟再试"}`。
@@ -123,7 +133,9 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/healthz` | 探活 |
-| POST | `/api/auth/register` | `{email,password}` → `{token,...}` |
+| GET | `/api/auth/config` | 公开配置 `{mail, mailCodeRequired}`，客户端据此决定要不要显示验证码输入框 |
+| POST | `/api/auth/email/code` | 发邮箱验证码 `{email,purpose:"register"\|"reset"}`；同地址 60 秒一次、每小时 5 封；未开发信返回 501 |
+| POST | `/api/auth/register` | `{email,password,code?}` → `{token,...}`；域名必须能收信，开了发信还必须带验证码 |
 | POST | `/api/auth/login` | 同上 |
 | POST | `/api/auth/logout` | 作废当前 token |
 | GET | `/api/auth/profile` | 昵称 / 是否设置过头像 |
