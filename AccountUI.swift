@@ -227,7 +227,7 @@ final class AvatarPill: NSView {
 
 // MARK: - 头像视图（有图显示图，没图显示品牌渐变 + 首字母）
 
-final class AvatarView: NSView {
+class AvatarView: NSView {
     var onTap: (() -> Void)?
     var initial: String = "" {
         didSet { initialLabel.stringValue = initial }

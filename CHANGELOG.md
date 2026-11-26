@@ -1,3 +1,24 @@
+### F21.28 · 账号面板改「嵌入式上弹卡片」+ 精简内容 — 状态：`已改，已装机，待发版`
+
+- **日期**：2026-11-26 21:25
+- **用户要求**：不要弹窗，做成壁纸库里向上弹出的小框；删掉不必要的东西，整块压扁；
+  去掉关闭红叉、不可拖动，和壁纸库一体。
+- **改动**：
+  - `AccountWindowController`（独立 `NSWindow`，400×432，可拖动、带关闭按钮）→ **`AccountPanel`**：
+    `NSVisualEffectView` 玻璃卡片 + 圆角 + 阴影，作为 `LibraryWindow` 的**子视图**钉在右下角，
+    底边距底栏 12pt；点底栏头像**向上滑出**（alpha + 位移），再点收起；Esc 或点面板外收起
+  - 高度随页面自适应（profile 264 / password 277 / login 352），换页时底边不动、向上长
+  - **账号安全区整块删除**：登录设备、恢复码都不再出现，只保留「修改密码」，
+    并移到头部右端做成半透明小键（`GhostButton`）
+  - **昵称与头像行删除**：头像悬停浮出半透明相机遮罩、点一下选图（`HoverAvatarView`）；
+    名字右边一个半透明小铅笔，点开就地变成输入框（回车保存 / Esc 取消，`NSTextFieldDelegate`）
+  - 「同步」区与「退出登录」保留；页面枚举从 7 页缩到 4 页（auth / profile / password / reset）
+- **踩坑**：`GhostButton` 一开始用 `Ink.fill.withAlphaComponent(0.55)` 做悬停——
+  那是「把颜色换成 55% 黑」，画出来是一块深灰饼、字都看不见。正确做法是叠两层 `Ink.fill`
+- **验证**：`VW_ACCOUNT_SHOT` 出图核对 profile / password / login / 改名态四个状态，
+  整窗截图确认卡片贴在右下、不压底栏、不越界；`VW_ACCOUNT_RENAME=1` 核对就地改名不压住状态文字
+- **装机**：`/Applications/Dòng.app`（PID 57622），旧二进制备份 `/tmp/vw_bin_backup_before_panel_*`；版本号未动
+
 ### F21.27 · 发布时可选「给所有用户发更新通知」 — 状态：`服务端完成，待官网部署`
 
 - **日期**：2026-11-26 20:50

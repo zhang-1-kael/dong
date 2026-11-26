@@ -117,68 +117,210 @@ final class AccountRow: NSView {
     }
 }
 
-// MARK: - 账号窗口
+// MARK: - 半透明小键
 
-/// 账号窗口：**固定 400 × 432，不可拉伸**，单页分区，没有侧栏。
-///
-/// 为什么不做成大设置窗口：用户明确要求「不能占太多位置、要简洁」。
-/// 所以只保留账号本身要用的东西，深色模式/统计这些仍留在原来的齿轮弹层里。
-final class AccountWindowController: NSWindowController {
+/// 头像右边的「修改密码」、名字旁的铅笔都用它：平时很淡，悬停才稍微实一点。
+final class GhostButton: NSButton {
 
-    let page = AccountPageController()
+    var onClick: (() -> Void)?
+    private var hovering = false { didSet { needsDisplay = true } }
+    private var tracking: NSTrackingArea?
 
-    init() {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0,
-                                             width: AccountPageController.width,
-                                             height: AccountPageController.height),
-                         styleMask: [.titled, .closable, .fullSizeContentView],
-                         backing: .buffered, defer: false)
-        w.titleVisibility = .hidden
-        w.titlebarAppearsTransparent = true
-        w.isMovableByWindowBackground = true
-        w.isReleasedWhenClosed = false
-        w.backgroundColor = .windowBackgroundColor
-        w.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        w.standardWindowButton(.zoomButton)?.isHidden = true
-        super.init(window: w)
-        w.contentViewController = page
-        w.setContentSize(NSSize(width: AccountPageController.width,
-                                height: AccountPageController.height))
+    init(title: String = "", symbol: String? = nil) {
+        super.init(frame: .zero)
+        isBordered = false
+        bezelStyle = .regularSquare
+        wantsLayer = true
+        translatesAutoresizingMaskIntoConstraints = false
+        target = self
+        action = #selector(fire)
+
+        if let symbol, let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) {
+            image = img
+            imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+            contentTintColor = Ink.secondary
+        }
+        if !title.isEmpty {
+            attributedTitle = NSAttributedString(string: title, attributes: [
+                .foregroundColor: Ink.secondary,
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            ])
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    /// 贴着主窗口右下角弹出；越界就夹回屏幕内。
-    func present(near parent: NSWindow?) {
-        page.reload()
-        guard let w = window else { return }
-        if let p = parent {
-            let f = p.frame
-            var x = f.maxX - w.frame.width - 28
-            var y = f.minY + 72
-            if let scr = p.screen?.visibleFrame {
-                x = max(scr.minX + 12, min(x, scr.maxX - w.frame.width - 12))
-                y = max(scr.minY + 12, min(y, scr.maxY - w.frame.height - 12))
-            }
-            w.setFrameOrigin(NSPoint(x: x, y: y))
-        } else {
-            w.center()
+    @objc private func fire() { onClick?() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = bounds
+        let pill = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
+        // Ink.fill 本身就是很淡的一层（5.5% 黑 / 7.5% 白），悬停时再叠一层把它压实一点。
+        // 注意别用 withAlphaComponent(0.55)——那是「换成 55% 黑」，会画成一块深灰饼（踩过）
+        Ink.fill.setFill()
+        pill.fill()
+        if hovering {
+            Ink.fill.setFill()
+            pill.fill()
         }
-        showWindow(nil)
-        w.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        super.draw(dirtyRect)
     }
 
-    /// 调试用：把窗口内容拍成图片
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero,
+                               options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+// MARK: - 可换的头像
+
+/// 头像：鼠标移上去浮一层半透明的「相机」，点一下选图。
+final class HoverAvatarView: AvatarView {
+
+    var onPick: (() -> Void)?
+
+    private let veil = NSView()
+    private let camera = NSImageView()
+    private var tracking: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+
+        veil.wantsLayer = true
+        veil.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.40).cgColor
+        veil.isHidden = true
+        veil.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(veil)
+
+        camera.image = NSImage(systemSymbolName: "camera.fill", accessibilityDescription: "换一张头像")
+        camera.contentTintColor = .white
+        camera.imageScaling = .scaleProportionallyDown
+        camera.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(camera)
+
+        NSLayoutConstraint.activate([
+            veil.leadingAnchor.constraint(equalTo: leadingAnchor),
+            veil.trailingAnchor.constraint(equalTo: trailingAnchor),
+            veil.topAnchor.constraint(equalTo: topAnchor),
+            veil.bottomAnchor.constraint(equalTo: bottomAnchor),
+            camera.centerXAnchor.constraint(equalTo: centerXAnchor),
+            camera.centerYAnchor.constraint(equalTo: centerYAnchor),
+            camera.widthAnchor.constraint(equalToConstant: 17),
+            camera.heightAnchor.constraint(equalToConstant: 14),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func layout() {
+        super.layout()
+        veil.layer?.cornerRadius = bounds.width / 2
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero,
+                               options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { veil.isHidden = false }
+    override func mouseExited(with event: NSEvent) { veil.isHidden = true }
+    override func mouseDown(with event: NSEvent) { onPick?() }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+// MARK: - 账号面板
+
+/// 账号面板：**壁纸库窗口里的一张卡片**，不是独立窗口。
+///
+/// 用户要求（2026-11-26）：不要弹窗，做成从底栏往上弹出的小框，和壁纸库一体——
+/// 所以没有标题栏、没有红色关闭按钮、不能拖动，位置由宿主窗口钉在右下角。
+final class AccountPanel: NSView {
+
+    static let width: CGFloat = 400
+    static let corner: CGFloat = 18
+
+    let page = AccountPageController()
+
+    /// 内容高度变了（换页 / 展开错误提示），宿主据此重新摆放
+    var onResize: (() -> Void)?
+
+    private(set) var contentHeight: CGFloat = 300
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = Self.corner
+        // 阴影必须挂在没有背景色的这层上，否则会被裁掉
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.22
+        layer?.shadowRadius = 26
+        layer?.shadowOffset = CGSize(width: 0, height: -8)
+
+        // 玻璃底：和壁纸库其他浮层一个观感，不是一块死白的板
+        let glass = NSVisualEffectView()
+        glass.material = .popover
+        glass.blendingMode = .withinWindow
+        glass.state = .active
+        glass.wantsLayer = true
+        glass.layer?.cornerRadius = Self.corner
+        glass.layer?.masksToBounds = true
+        glass.layer?.borderWidth = 1
+        glass.layer?.borderColor = Ink.edge.cgColor
+        glass.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(glass)
+
+        let v = page.view
+        v.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(v)
+
+        NSLayoutConstraint.activate([
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor),
+            glass.topAnchor.constraint(equalTo: topAnchor),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor),
+            v.leadingAnchor.constraint(equalTo: leadingAnchor),
+            v.trailingAnchor.constraint(equalTo: trailingAnchor),
+            v.topAnchor.constraint(equalTo: topAnchor),
+            v.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+
+        page.onSizeChange = { [weak self] h in
+            guard let self, abs(h - self.contentHeight) > 0.5 else { return }
+            self.contentHeight = h
+            self.onResize?()
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// 调试用：把面板拍成图片
     func debugSnapshot(to path: String) {
-        guard let v = window?.contentView else { return }
-        v.layoutSubtreeIfNeeded()
-        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
-        v.cacheDisplay(in: v.bounds, to: rep)
+        layoutSubtreeIfNeeded()
+        guard let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        cacheDisplay(in: bounds, to: rep)
         if let data = rep.representation(using: .png, properties: [:]) {
             try? data.write(to: URL(fileURLWithPath: path))
         }
-        print("[account] shot size=\(v.bounds.size)")
     }
 }
 
@@ -189,7 +331,7 @@ final class AccountPageController: NSViewController {
     static let width: CGFloat = 400
     static let height: CGFloat = 432
 
-    private enum Page { case auth, profile, edit, password, devices, recovery, reset }
+    private enum Page { case auth, profile, password, reset }
 
     private var page: Page = .auth
     private let contentWidth: CGFloat = 400 - 44
@@ -226,13 +368,13 @@ final class AccountPageController: NSViewController {
     private var syncFoot: NSTextField?
     private var syncButton: AccountButton?
 
-    // 编辑资料
-    private var editAvatar: AvatarView?
-    private var editName: AccountFieldBox?
-    private var editStatus: NSTextField?
-    private var editSave: AccountButton?
-    private var editRemove: AccountButton?
-    private var pendingAvatar: Data?
+    // 就地改名
+    private var nameField: NSTextField?
+    private var pencilButton: NSButton?
+    private var renaming = false
+
+    /// 内容高度变化时通知外层（面板据此重新摆位置）
+    var onSizeChange: ((CGFloat) -> Void)?
 
     // 改密码
     private var pwOld: AccountFieldBox?
@@ -240,17 +382,6 @@ final class AccountPageController: NSViewController {
     private var pwConfirm: AccountFieldBox?
     private var pwStatus: NSTextField?
     private var pwSave: AccountButton?
-
-    // 登录设备 / 恢复码
-    private var sessions: [AccountAPI.SessionInfo] = []
-    private var sessionsLoaded = false
-    private var sessionsLoading = false
-    private var sessionsError: String?
-    private var recovery: AccountAPI.RecoveryState?
-    private var recoveryLoaded = false
-    private var recoveryRow: AccountRow?
-    /// 刚生成、还没离开页面的明文恢复码（离开就丢，服务端也只存哈希）
-    private var freshCode: String?
 
     // 重设密码
     private var resetEmail: AccountFieldBox?
@@ -296,10 +427,7 @@ final class AccountPageController: NSViewController {
     func reload() {
         if let p = ProcessInfo.processInfo.environment["VW_ACCOUNT_PAGE"], !didForceDebugPage {
             switch p {
-            case "edit": page = .edit
             case "password": page = .password
-            case "devices": page = .devices
-            case "recovery": page = .recovery
             case "reset": page = .reset
             case "profile": page = .profile
             case "auth": page = .auth
@@ -325,7 +453,6 @@ final class AccountPageController: NSViewController {
 
     /// 回到主页（子页面的「返回」和保存成功后都走这里）
     @objc private func goProfile() {
-        freshCode = nil
         guard SyncCenter.shared.isLoggedIn else { page = .auth; render(); return }
         page = .profile
         render()
@@ -357,17 +484,14 @@ final class AccountPageController: NSViewController {
         }
 
         switch page {
-        case .auth:
-            buildAuth(into: stack)
+        case .auth: buildAuth(into: stack)
         case .profile: buildProfile(into: stack)
-        case .edit: buildEdit(into: stack)
         case .password: buildPassword(into: stack)
-        case .devices: buildDevices(into: stack)
-        case .recovery: buildRecovery(into: stack)
         case .reset: buildReset(into: stack)
         }
 
         if page == .profile { loadUsage() }
+        reportSize(stack)
     }
 
     private func clearRefs() {
@@ -376,7 +500,7 @@ final class AccountPageController: NSViewController {
         authCode = nil; authSend = nil; authCodeRow = nil
         profAvatar = nil; profName = nil; profEmail = nil; profStatus = nil
         syncSummary = nil; syncQuota = nil; syncBar = nil; syncFoot = nil; syncButton = nil
-        editAvatar = nil; editName = nil; editStatus = nil; editSave = nil; editRemove = nil
+        nameField = nil; pencilButton = nil
         pwOld = nil; pwNew = nil; pwConfirm = nil; pwStatus = nil; pwSave = nil
     }
 
@@ -745,31 +869,32 @@ final class AccountPageController: NSViewController {
     // MARK: 已登录主页
 
     private func buildProfile(into stack: NSStackView) {
+        // 头：头像 / 名字 + 铅笔 / 状态 / 邮箱 / 修改密码
         let header = NSView()
         header.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(header)
-        NSLayoutConstraint.activate([
-            header.widthAnchor.constraint(equalToConstant: contentWidth),
-            header.heightAnchor.constraint(equalToConstant: 46),
-        ])
-        stack.setCustomSpacing(14, after: header)
+        header.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
+        header.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        stack.setCustomSpacing(12, after: header)
 
-        let avatar = AvatarView()
+        // 头像：悬停出「换一张」，点一下选图
+        let avatar = HoverAvatarView()
         avatar.translatesAutoresizingMaskIntoConstraints = false
-        avatar.onTap = { [weak self] in self?.openEdit() }
+        avatar.onPick = { [weak self] in self?.pickAvatar() }
         header.addSubview(avatar)
-        NSLayoutConstraint.activate([
-            avatar.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            avatar.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            avatar.widthAnchor.constraint(equalToConstant: 44),
-            avatar.heightAnchor.constraint(equalToConstant: 44),
-        ])
         profAvatar = avatar
 
-        let name = text("", size: 14, weight: .medium)
+        let name = text("", size: 14.5, weight: .medium)
+        name.lineBreakMode = .byTruncatingTail
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         name.translatesAutoresizingMaskIntoConstraints = false
         header.addSubview(name)
         profName = name
+
+        let pencil = GhostButton(symbol: "pencil")
+        pencil.onClick = { [weak self] in self?.beginRename() }
+        header.addSubview(pencil)
+        pencilButton = pencil
 
         let status = text("", size: 10.5)
         status.translatesAutoresizingMaskIntoConstraints = false
@@ -777,19 +902,44 @@ final class AccountPageController: NSViewController {
         profStatus = status
 
         let mail = text("", size: 11, color: Ink.tertiary)
+        mail.lineBreakMode = .byTruncatingTail
+        mail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         mail.translatesAutoresizingMaskIntoConstraints = false
         header.addSubview(mail)
         profEmail = mail
 
+        // 修改密码：半透明小键，贴在头像这一行的最右
+        let pw = GhostButton(title: "修改密码")
+        pw.onClick = { [weak self] in self?.openPassword() }
+        header.addSubview(pw)
+
         NSLayoutConstraint.activate([
-            name.leadingAnchor.constraint(equalTo: avatar.trailingAnchor, constant: 11),
-            name.topAnchor.constraint(equalTo: header.topAnchor, constant: 1),
-            status.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 6),
+            avatar.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            avatar.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            avatar.widthAnchor.constraint(equalToConstant: 46),
+            avatar.heightAnchor.constraint(equalToConstant: 46),
+
+            name.leadingAnchor.constraint(equalTo: avatar.trailingAnchor, constant: 12),
+            name.topAnchor.constraint(equalTo: header.topAnchor, constant: 2),
+            name.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
+
+            pencil.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 6),
+            pencil.centerYAnchor.constraint(equalTo: name.centerYAnchor),
+            pencil.widthAnchor.constraint(equalToConstant: 22),
+            pencil.heightAnchor.constraint(equalToConstant: 18),
+
+            status.leadingAnchor.constraint(equalTo: pencil.trailingAnchor, constant: 8),
             status.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor),
-            status.trailingAnchor.constraint(lessThanOrEqualTo: header.trailingAnchor),
+            status.trailingAnchor.constraint(lessThanOrEqualTo: pw.leadingAnchor, constant: -8),
+
             mail.leadingAnchor.constraint(equalTo: name.leadingAnchor),
             mail.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 3),
-            mail.trailingAnchor.constraint(lessThanOrEqualTo: header.trailingAnchor),
+            mail.trailingAnchor.constraint(lessThanOrEqualTo: pw.leadingAnchor, constant: -8),
+
+            pw.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            pw.centerYAnchor.constraint(equalTo: avatar.centerYAnchor),
+            pw.widthAnchor.constraint(equalToConstant: 64),
+            pw.heightAnchor.constraint(equalToConstant: 23),
         ])
 
         divider(in: stack)
@@ -847,8 +997,6 @@ final class AccountPageController: NSViewController {
         sync.translatesAutoresizingMaskIntoConstraints = false
         footRow.addSubview(sync)
         syncButton = sync
-
-        // 文字按钮手动描一圈边，让它看得出是可点的
         sync.wantsLayer = true
         sync.layer?.borderWidth = 1
         sync.layer?.borderColor = Ink.edge.cgColor
@@ -863,46 +1011,12 @@ final class AccountPageController: NSViewController {
             sync.heightAnchor.constraint(equalToConstant: 24),
             foot.trailingAnchor.constraint(lessThanOrEqualTo: sync.leadingAnchor, constant: -8),
         ])
-        stack.setCustomSpacing(10, after: footRow)
+        stack.setCustomSpacing(12, after: footRow)
 
         divider(in: stack)
 
-        // 账号安全
-        let secHead = sectionLabel("账号安全")
-        fullWidth(secHead, in: stack)
-        stack.setCustomSpacing(2, after: secHead)
-
-        let devices = AccountRow(title: "登录设备", value: "管理")
-        devices.onTap = { [weak self] in self?.openDevices() }
-        fullWidth(devices, in: stack)
-
-        let pw = AccountRow(title: "修改密码")
-        pw.onTap = { [weak self] in self?.openPassword() }
-        fullWidth(pw, in: stack)
-
-        let recovery = AccountRow(title: "恢复码", value: "检查中…", hairline: false)
-        recovery.onTap = { [weak self] in self?.openRecovery() }
-        recoveryRow = recovery
-        fullWidth(recovery, in: stack)
-        if !recoveryLoaded { loadRecovery() } else { refreshRecoveryRow() }
-
-        let gap = NSView()
-        gap.translatesAutoresizingMaskIntoConstraints = false
-        stack.addArrangedSubview(gap)
-        gap.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
-        gap.heightAnchor.constraint(equalToConstant: 9).isActive = true
-
-        divider(in: stack)
-
-        // 账号
-        let accHead = sectionLabel("账号")
-        fullWidth(accHead, in: stack)
-        stack.setCustomSpacing(2, after: accHead)
-
-        let edit = AccountRow(title: "昵称与头像")
-        edit.onTap = { [weak self] in self?.openEdit() }
-        fullWidth(edit, in: stack)
-
+        // 只剩退出登录——登录设备、恢复码、昵称头像都收掉了：
+        // 头像悬停即换、名字旁边的小笔即改，不必再占一行
         let out = AccountRow(title: "退出登录",
                              value: "壁纸留在账号里",
                              valueColor: Ink.tertiary,
@@ -915,10 +1029,129 @@ final class AccountPageController: NSViewController {
         updateLive()
     }
 
-    private func openEdit() {
-        guard SyncCenter.shared.isLoggedIn else { return }
-        page = .edit
-        render()
+    /// 报一次内容高度：外层面板据此把卡片拔高/压扁，底边不动（向上长）
+    private func reportSize(_ stack: NSStackView) {
+        stack.layoutSubtreeIfNeeded()
+        let h: CGFloat
+        if page == .auth {
+            h = isRegister ? (mailUnavailable ? 384 : 426) : 352
+        } else {
+            h = ceil(stack.fittingSize.height) + 34 + 20
+        }
+        onSizeChange?(h)
+    }
+
+    /// 调试用：直接进入改名态（截图核对用）
+    func debugBeginRename() { beginRename() }
+
+    // MARK: 就地改名 / 换头像
+
+    @objc private func beginRename() {
+        guard !renaming, let name = profName, let header = name.superview else { return }
+        renaming = true
+        name.isHidden = true
+        pencilButton?.isHidden = true
+        // 输入框比名字宽，会把状态文字压住——改名期间先收起来
+        profStatus?.isHidden = true
+        // 输入框比名字宽，会把状态文字压住——改名期间先收起来
+        profStatus?.isHidden = true
+
+        let f = NSTextField()
+        f.stringValue = name.stringValue
+        f.font = .systemFont(ofSize: 14.5, weight: .medium)
+        f.textColor = Ink.primary
+        f.isBezeled = false
+        f.drawsBackground = true
+        f.backgroundColor = Ink.inputFill
+        f.focusRingType = .none
+        f.wantsLayer = true
+        f.layer?.cornerRadius = 5
+        f.translatesAutoresizingMaskIntoConstraints = false
+        f.delegate = self
+        f.target = self
+        f.action = #selector(commitRename)
+        header.addSubview(f)
+        nameField = f
+
+        NSLayoutConstraint.activate([
+            f.leadingAnchor.constraint(equalTo: name.leadingAnchor, constant: -5),
+            f.centerYAnchor.constraint(equalTo: name.centerYAnchor),
+            f.widthAnchor.constraint(equalToConstant: 172),
+            f.heightAnchor.constraint(equalToConstant: 22),
+        ])
+        f.window?.makeFirstResponder(f)
+        f.currentEditor()?.selectAll(nil)
+    }
+
+    @objc private func commitRename() {
+        guard let f = nameField, let session = SyncCenter.shared.session else { return }
+        let name = f.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let old = SyncCenter.shared.profile?.displayName ?? ""
+        if name.count > 20 {
+            profStatus?.stringValue = "昵称最多 20 个字"
+            profStatus?.textColor = .systemRed
+            return
+        }
+        if name == old { cancelRename(); return }
+        endRenameField()
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.updateDisplayName(token: session.token, name: name)
+            DispatchQueue.main.async {
+                switch r {
+                case .success:
+                    SyncCenter.shared.refreshProfile()
+                case let .failure(e):
+                    self.profStatus?.stringValue = e.localizedDescription
+                    self.profStatus?.textColor = .systemRed
+                    self.updateLive()
+                }
+            }
+        }
+    }
+
+    @objc private func cancelRename() {
+        endRenameField()
+        updateLive()
+    }
+
+    private func endRenameField() {
+        nameField?.removeFromSuperview()
+        nameField = nil
+        renaming = false
+        profName?.isHidden = false
+        pencilButton?.isHidden = false
+        profStatus?.isHidden = false
+        profStatus?.isHidden = false
+    }
+
+    /// 换头像：选图 → 裁方 → 上传，完成后直接刷新头部
+    @objc private func pickAvatar() {
+        guard let session = SyncCenter.shared.session else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.png, .jpeg]
+        panel.message = "选一张图片做头像（会自动裁成方形）"
+        guard panel.runModal() == .OK, let url = panel.url,
+              let img = NSImage(contentsOf: url) else { return }
+        guard let data = Self.squarePNG(img, side: 256) else {
+            profStatus?.stringValue = "这张图片读不出来"
+            profStatus?.textColor = .systemRed
+            return
+        }
+        profStatus?.stringValue = "正在上传头像…"
+        profStatus?.textColor = Brand.accent
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = AccountAPI.uploadAvatar(token: session.token, png: data)
+            DispatchQueue.main.async {
+                if case let .failure(e) = r {
+                    self.profStatus?.stringValue = "头像没换成：\(e.localizedDescription)"
+                    self.profStatus?.textColor = .systemRed
+                    return
+                }
+                SyncCenter.shared.refreshProfile()
+            }
+        }
     }
 
     private func openPassword() {
@@ -1135,540 +1368,6 @@ final class AccountPageController: NSViewController {
         resetStatus?.isHidden = false
     }
 
-    // MARK: 登录设备
-
-    private func openDevices() {
-        guard SyncCenter.shared.isLoggedIn else { return }
-        sessionsLoaded = false
-        sessionsError = nil
-        page = .devices
-        render()
-    }
-
-    private func buildDevices(into stack: NSStackView) {
-        backHeader("登录设备", in: stack)
-
-        let hint = text("这些设备上都登录着这个账号", size: 10.5, color: Ink.tertiary)
-        fullWidth(hint, in: stack, spacing: 10)
-
-        if let err = sessionsError {
-            let t = text("读不到设备列表：\(err)", size: 11, color: .systemOrange)
-            t.maximumNumberOfLines = 0
-            t.lineBreakMode = .byWordWrapping
-            t.preferredMaxLayoutWidth = contentWidth
-            fullWidth(t, in: stack)
-        } else if !sessionsLoaded {
-            fullWidth(text("正在读取…", size: 12, color: Ink.tertiary), in: stack)
-            loadSessions()
-        } else if sessions.isEmpty {
-            fullWidth(text("除了这台，没有别的设备", size: 12, color: Ink.tertiary), in: stack)
-        } else {
-            for (i, item) in sessions.enumerated() {
-                fullWidth(deviceRow(item, last: i == sessions.count - 1), in: stack)
-            }
-        }
-
-        let gap = NSView()
-        gap.translatesAutoresizingMaskIntoConstraints = false
-        stack.addArrangedSubview(gap)
-        gap.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
-        gap.heightAnchor.constraint(equalToConstant: 14).isActive = true
-
-        let foot = text("看到不认识的设备？先退出它，再改一次密码。", size: 10.5, color: Ink.tertiary)
-        foot.maximumNumberOfLines = 0
-        foot.lineBreakMode = .byWordWrapping
-        foot.preferredMaxLayoutWidth = contentWidth
-        fullWidth(foot, in: stack, spacing: 10)
-
-        let others = sessions.filter { !$0.current }.count
-        let kick = AccountButton(title: others > 0 ? "退出所有其它设备" : "没有其它设备在线", kind: .quiet)
-        kick.isEnabled = others > 0
-        kick.target = self
-        kick.action = #selector(kickOthers)
-        // 文字按钮默认看不出可点，给一圈细边
-        kick.wantsLayer = true
-        kick.layer?.borderWidth = 1
-        kick.layer?.borderColor = Ink.edge.cgColor
-        kick.layer?.cornerRadius = 6
-        fullWidth(kick, in: stack)
-        kick.heightAnchor.constraint(equalToConstant: 28).isActive = true
-    }
-
-    private func deviceRow(_ item: AccountAPI.SessionInfo, last: Bool) -> NSView {
-        let holder = NSView()
-        holder.translatesAutoresizingMaskIntoConstraints = false
-        holder.heightAnchor.constraint(equalToConstant: 46).isActive = true
-
-        let name = text(item.device, size: 12.5)
-        name.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(name)
-
-        let sub = text(item.current ? "当前设备" : "最近活跃 " + Self.relative(item.lastSeen),
-                       size: 10.5,
-                       color: item.current ? .systemGreen : Ink.tertiary)
-        sub.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(sub)
-
-        NSLayoutConstraint.activate([
-            name.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
-            name.topAnchor.constraint(equalTo: holder.topAnchor, constant: 5),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: holder.trailingAnchor, constant: -56),
-            sub.leadingAnchor.constraint(equalTo: name.leadingAnchor),
-            sub.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 1),
-        ])
-
-        if !item.current {
-            let kick = ClosureButton(title: "退出", onTap: { [weak self] in self?.kick(item) })
-            kick.translatesAutoresizingMaskIntoConstraints = false
-            holder.addSubview(kick)
-            NSLayoutConstraint.activate([
-                kick.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
-                kick.centerYAnchor.constraint(equalTo: holder.centerYAnchor),
-                kick.widthAnchor.constraint(equalToConstant: 44),
-                kick.heightAnchor.constraint(equalToConstant: 22),
-            ])
-        }
-
-        if !last {
-            let line = hairline()
-            holder.addSubview(line)
-            NSLayoutConstraint.activate([
-                line.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
-                line.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
-                line.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
-            ])
-        }
-        return holder
-    }
-
-    private func loadSessions() {
-        guard let session = SyncCenter.shared.session, !sessionsLoading else { return }
-        sessionsLoading = true
-        DispatchQueue.global(qos: .utility).async {
-            let r = AccountAPI.sessions(token: session.token)
-            DispatchQueue.main.async {
-                self.sessionsLoading = false
-                self.sessionsLoaded = true
-                switch r {
-                case let .success(list): self.sessions = list; self.sessionsError = nil
-                case let .failure(e): self.sessionsError = e.localizedDescription
-                }
-                if self.page == .devices { self.render() }
-            }
-        }
-    }
-
-    private func kick(_ item: AccountAPI.SessionInfo) {
-        guard let session = SyncCenter.shared.session else { return }
-        let a = NSAlert()
-        a.messageText = "让这台设备退出登录？"
-        a.informativeText = "「\(item.device)」下次打开 App 需要重新登录。"
-        a.addButton(withTitle: "退出登录")
-        a.addButton(withTitle: "取消")
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let r = AccountAPI.revokeSession(token: session.token, id: item.id)
-            DispatchQueue.main.async {
-                if case let .failure(e) = r {
-                    self.alert("没踢掉", e.localizedDescription)
-                    return
-                }
-                self.sessionsLoaded = false
-                self.render()
-            }
-        }
-    }
-
-    @objc private func kickOthers() {
-        guard let session = SyncCenter.shared.session else { return }
-        let n = sessions.filter { !$0.current }.count
-        guard n > 0 else { return }
-        let a = NSAlert()
-        a.messageText = "退出其它 \(n) 台设备？"
-        a.informativeText = "这台电脑不受影响。"
-        a.addButton(withTitle: "全部退出")
-        a.addButton(withTitle: "取消")
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let r = AccountAPI.revokeSession(token: session.token, id: "others")
-            DispatchQueue.main.async {
-                if case let .failure(e) = r {
-                    self.alert("没踢掉", e.localizedDescription)
-                    return
-                }
-                self.sessionsLoaded = false
-                self.render()
-            }
-        }
-    }
-
-    // MARK: 恢复码
-
-    private func openRecovery() {
-        guard SyncCenter.shared.isLoggedIn else { return }
-        freshCode = nil
-        recoveryLoaded = false
-        page = .recovery
-        render()
-    }
-
-    private func buildRecovery(into stack: NSStackView) {
-        backHeader("恢复码", in: stack)
-        // 调试用：摆拍「刚生成完」的界面（正常流程里只有点了生成才有）
-        if freshCode == nil, let c = ProcessInfo.processInfo.environment["VW_ACCOUNT_FRESHCODE"] {
-            freshCode = c
-        }
-
-        let intro = text("忘了密码时，用「邮箱 + 恢复码」重设。码只显示一次，请抄下来或存进密码管理器。",
-                         size: 11, color: Ink.secondary)
-        intro.maximumNumberOfLines = 0
-        intro.lineBreakMode = .byWordWrapping
-        intro.preferredMaxLayoutWidth = contentWidth
-        fullWidth(intro, in: stack, spacing: 14)
-
-        if let code = freshCode {
-            let box = NSView()
-            box.wantsLayer = true
-            box.layer?.cornerRadius = 8
-            box.layer?.backgroundColor = Ink.fill.cgColor
-            box.translatesAutoresizingMaskIntoConstraints = false
-            stack.addArrangedSubview(box)
-            box.widthAnchor.constraint(equalToConstant: contentWidth).isActive = true
-            box.heightAnchor.constraint(equalToConstant: 46).isActive = true
-
-            let label = NSTextField(labelWithString: code)
-            label.font = .monospacedDigitSystemFont(ofSize: 15, weight: .medium)
-            label.textColor = Ink.primary
-            label.alignment = .center
-            label.isSelectable = true
-            label.translatesAutoresizingMaskIntoConstraints = false
-            box.addSubview(label)
-            NSLayoutConstraint.activate([
-                label.centerXAnchor.constraint(equalTo: box.centerXAnchor),
-                label.centerYAnchor.constraint(equalTo: box.centerYAnchor),
-            ])
-            stack.setCustomSpacing(10, after: box)
-
-            let copy = AccountButton(title: "复制恢复码")
-            copy.target = self
-            copy.action = #selector(copyCode)
-            fullWidth(copy, in: stack)
-            copy.heightAnchor.constraint(equalToConstant: 34).isActive = true
-            stack.setCustomSpacing(8, after: copy)
-
-            let warn = text("离开这个页面后就看不到了，只能重新生成。", size: 10.5, color: .systemOrange)
-            warn.maximumNumberOfLines = 0
-            warn.lineBreakMode = .byWordWrapping
-            warn.preferredMaxLayoutWidth = contentWidth
-            fullWidth(warn, in: stack)
-            return
-        }
-
-        if !recoveryLoaded {
-            fullWidth(text("正在读取…", size: 12, color: Ink.tertiary), in: stack)
-            loadRecovery()
-            return
-        }
-
-        let has = recovery?.hasRecovery ?? false
-        let stateText: String
-        if recovery == nil {
-            stateText = "读不到恢复码状态，服务端可能还没更新"
-        } else if has {
-            stateText = "已生成于 " + Self.dateText(recovery?.createdAt ?? 0)
-        } else {
-            stateText = "还没有恢复码"
-        }
-        let state = text(stateText, size: 12, color: has ? Ink.primary : .systemOrange)
-        fullWidth(state, in: stack, spacing: 12)
-
-        let primary = AccountButton(title: has ? "重新生成" : "生成恢复码")
-        primary.target = self
-        primary.action = #selector(generateRecovery)
-        fullWidth(primary, in: stack)
-        primary.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        stack.setCustomSpacing(8, after: primary)
-
-        let note = text(has ? "重新生成会让旧码立刻失效。" : "建议现在就生成一个，忘密码时这是唯一出路。",
-                        size: 10.5, color: Ink.tertiary)
-        note.maximumNumberOfLines = 0
-        note.lineBreakMode = .byWordWrapping
-        note.preferredMaxLayoutWidth = contentWidth
-        fullWidth(note, in: stack, spacing: 10)
-
-        if has {
-            let remove = AccountButton(title: "移除恢复码", kind: .quiet)
-            remove.target = self
-            remove.action = #selector(removeRecovery)
-            remove.titleAlignment = .left
-            fullWidth(remove, in: stack)
-            remove.heightAnchor.constraint(equalToConstant: 26).isActive = true
-        }
-    }
-
-    private func loadRecovery() {
-        guard let session = SyncCenter.shared.session, !recoveryLoaded else { return }
-        DispatchQueue.global(qos: .utility).async {
-            let r = AccountAPI.recoveryStatus(token: session.token)
-            DispatchQueue.main.async {
-                self.recoveryLoaded = true
-                if case let .success(st) = r { self.recovery = st }
-                self.refreshRecoveryRow()
-                if self.page == .recovery || self.page == .profile { self.render() }
-            }
-        }
-    }
-
-    private func refreshRecoveryRow() {
-        guard let row = recoveryRow else { return }
-        guard let r = recovery else { row.setValue("检查失败"); return }
-        if r.hasRecovery {
-            row.setValue("已生成")
-        } else {
-            row.setValue("未生成", color: .systemOrange)
-        }
-    }
-
-    @objc private func generateRecovery() {
-        guard let session = SyncCenter.shared.session else { return }
-        if recovery?.hasRecovery == true {
-            let a = NSAlert()
-            a.messageText = "重新生成恢复码？"
-            a.informativeText = "旧的那串会立刻失效。"
-            a.addButton(withTitle: "重新生成")
-            a.addButton(withTitle: "取消")
-            guard a.runModal() == .alertFirstButtonReturn else { return }
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let r = AccountAPI.createRecovery(token: session.token)
-            DispatchQueue.main.async {
-                switch r {
-                case let .success(code):
-                    self.freshCode = code
-                    self.recovery = AccountAPI.RecoveryState(
-                        hasRecovery: true,
-                        createdAt: Int64(Date().timeIntervalSince1970 * 1000))
-                    self.recoveryLoaded = true
-                    self.refreshRecoveryRow()
-                    self.render()
-                case let .failure(e):
-                    self.alert("生成失败", e.localizedDescription)
-                }
-            }
-        }
-    }
-
-    @objc private func removeRecovery() {
-        guard let session = SyncCenter.shared.session else { return }
-        let a = NSAlert()
-        a.messageText = "移除恢复码？"
-        a.informativeText = "移除后忘记密码就没法自己重置了。"
-        a.addButton(withTitle: "移除")
-        a.addButton(withTitle: "取消")
-        guard a.runModal() == .alertFirstButtonReturn else { return }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            let r = AccountAPI.removeRecovery(token: session.token)
-            DispatchQueue.main.async {
-                switch r {
-                case .success:
-                    self.recovery = AccountAPI.RecoveryState(hasRecovery: false, createdAt: 0)
-                    self.freshCode = nil
-                    self.refreshRecoveryRow()
-                    self.render()
-                case let .failure(e):
-                    self.alert("移除失败", e.localizedDescription)
-                }
-            }
-        }
-    }
-
-    @objc private func copyCode() {
-        guard let code = freshCode else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(code, forType: .string)
-    }
-
-    private func alert(_ title: String, _ message: String) {
-        let a = NSAlert()
-        a.messageText = title
-        a.informativeText = message
-        a.runModal()
-    }
-
-    static func relative(_ ms: Int64) -> String {
-        guard ms > 0 else { return "未知" }
-        let sec = Date().timeIntervalSince1970 - Double(ms) / 1000
-        if sec < 90 { return "刚刚" }
-        if sec < 3600 { return "\(Int(sec / 60)) 分钟前" }
-        if sec < 86400 { return "\(Int(sec / 3600)) 小时前" }
-        return "\(Int(sec / 86400)) 天前"
-    }
-
-    static func dateText(_ ms: Int64) -> String {
-        guard ms > 0 else { return "未知时间" }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy 年 M 月 d 日"
-        return f.string(from: Date(timeIntervalSince1970: Double(ms) / 1000))
-    }
-
-    // MARK: 编辑资料
-
-    private func buildEdit(into stack: NSStackView) {
-        backHeader("昵称与头像", in: stack)
-
-        let avatar = AvatarView()
-        avatar.translatesAutoresizingMaskIntoConstraints = false
-        avatar.onTap = { [weak self] in self?.pickAvatar() }
-        stack.addArrangedSubview(avatar)
-        NSLayoutConstraint.activate([
-            avatar.widthAnchor.constraint(equalToConstant: 76),
-            avatar.heightAnchor.constraint(equalToConstant: 76),
-        ])
-        editAvatar = avatar
-        stack.setCustomSpacing(6, after: avatar)
-
-        let nick = SyncCenter.shared.profile?.displayName ?? ""
-        let seed = nick.isEmpty ? (SyncCenter.shared.session?.email ?? "?") : nick
-        avatar.initial = String(seed.first ?? "?").uppercased()
-        if let d = SyncCenter.shared.avatarData, let img = NSImage(data: d) {
-            avatar.image = img
-        }
-
-        let tip = text("点头像换一张", size: 10.5, color: Ink.tertiary)
-        stack.addArrangedSubview(tip)
-        stack.setCustomSpacing(14, after: tip)
-
-        let name = AccountFieldBox(placeholder: "昵称（最多 20 个字）")
-        name.field.stringValue = nick
-        fullWidth(name, in: stack, spacing: 8)
-        editName = name
-
-        let status = text("", size: 11, color: .systemRed)
-        status.maximumNumberOfLines = 0
-        status.lineBreakMode = .byWordWrapping
-        status.preferredMaxLayoutWidth = contentWidth
-        status.isHidden = true
-        fullWidth(status, in: stack, spacing: 4)
-        editStatus = status
-
-        let save = AccountButton(title: "保存")
-        save.target = self
-        save.action = #selector(saveProfile)
-        fullWidth(save, in: stack, spacing: 6)
-        save.heightAnchor.constraint(equalToConstant: 34).isActive = true
-        editSave = save
-
-        let remove = AccountButton(title: "移除头像", kind: .quiet)
-        remove.target = self
-        remove.action = #selector(removeAvatar)
-        fullWidth(remove, in: stack)
-        remove.heightAnchor.constraint(equalToConstant: 26).isActive = true
-        remove.isHidden = !(SyncCenter.shared.profile?.hasAvatar ?? false)
-        editRemove = remove
-    }
-
-    @objc private func pickAvatar() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.png, .jpeg]
-        panel.message = "选一张图片做头像（会自动裁成方形）"
-        guard panel.runModal() == .OK, let url = panel.url,
-              let img = NSImage(contentsOf: url) else { return }
-        guard let data = Self.squarePNG(img, side: 256) else {
-            editStatus?.stringValue = "这张图片读不出来"
-            editStatus?.isHidden = false
-            return
-        }
-        pendingAvatar = data
-        editAvatar?.image = NSImage(data: data)
-        editStatus?.isHidden = true
-        editRemove?.isHidden = false
-    }
-
-    /// 裁成正方形 + 缩到 256，避免把几 MB 的原图传上去
-    static func squarePNG(_ image: NSImage, side: CGFloat) -> Data? {
-        let size = image.size
-        guard size.width > 0, size.height > 0 else { return nil }
-        let edge = min(size.width, size.height)
-        let crop = NSRect(x: (size.width - edge) / 2, y: (size.height - edge) / 2,
-                          width: edge, height: edge)
-        let out = NSImage(size: NSSize(width: side, height: side))
-        out.lockFocus()
-        NSGraphicsContext.current?.imageInterpolation = .high
-        image.draw(in: NSRect(x: 0, y: 0, width: side, height: side),
-                   from: crop, operation: .copy, fraction: 1)
-        out.unlockFocus()
-        guard let tiff = out.tiffRepresentation,
-              let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .png, properties: [:])
-    }
-
-    @objc private func saveProfile() {
-        guard let session = SyncCenter.shared.session else { return }
-        let name = (editName?.text ?? "").trimmingCharacters(in: .whitespaces)
-        if name.count > 20 {
-            editStatus?.stringValue = "昵称最多 20 个字"
-            editStatus?.isHidden = false
-            return
-        }
-        editSave?.setEnabled(false)
-        editSave?.updateTitle("保存中…")
-        editStatus?.isHidden = true
-        let avatar = pendingAvatar
-        let old = SyncCenter.shared.profile?.displayName ?? ""
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            var error: String?
-            if let avatar {
-                if case let .failure(e) = AccountAPI.uploadAvatar(token: session.token, png: avatar) {
-                    error = "头像保存失败：\(e.localizedDescription)"
-                }
-            }
-            if error == nil, name != old {
-                if case let .failure(e) = AccountAPI.updateDisplayName(token: session.token, name: name) {
-                    error = "昵称保存失败：\(e.localizedDescription)"
-                }
-            }
-            DispatchQueue.main.async {
-                self.editSave?.setEnabled(true)
-                self.editSave?.updateTitle("保存")
-                if let error {
-                    self.editStatus?.stringValue = error
-                    self.editStatus?.isHidden = false
-                    return
-                }
-                self.pendingAvatar = nil
-                SyncCenter.shared.refreshProfile { [weak self] in
-                    self?.goProfile()
-                }
-            }
-        }
-    }
-
-    @objc private func removeAvatar() {
-        guard let session = SyncCenter.shared.session else { return }
-        editRemove?.setEnabled(false)
-        DispatchQueue.global(qos: .userInitiated).async {
-            let r = AccountAPI.deleteAvatar(token: session.token)
-            DispatchQueue.main.async {
-                self.editRemove?.setEnabled(true)
-                if case let .failure(e) = r {
-                    self.editStatus?.stringValue = e.localizedDescription
-                    self.editStatus?.isHidden = false
-                    return
-                }
-                self.pendingAvatar = nil
-                SyncCenter.shared.refreshProfile { [weak self] in
-                    self?.goProfile()
-                }
-            }
-        }
-    }
-
     // MARK: 修改密码
 
     private func buildPassword(into stack: NSStackView) {
@@ -1745,6 +1444,24 @@ final class AccountPageController: NSViewController {
         }
     }
 
+    /// 裁成正方形 + 缩到 256，避免把几 MB 的原图传上去
+    static func squarePNG(_ image: NSImage, side: CGFloat) -> Data? {
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return nil }
+        let edge = min(size.width, size.height)
+        let crop = NSRect(x: (size.width - edge) / 2, y: (size.height - edge) / 2,
+                          width: edge, height: edge)
+        let out = NSImage(size: NSSize(width: side, height: side))
+        out.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        image.draw(in: NSRect(x: 0, y: 0, width: side, height: side),
+                   from: crop, operation: .copy, fraction: 1)
+        out.unlockFocus()
+        guard let tiff = out.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+
     // MARK: 格式化
 
     static func bytes(_ v: Int64) -> String {
@@ -1758,5 +1475,22 @@ final class AccountPageController: NSViewController {
             return String(format: "%.0f KB", Double(v) / 1024)
         }
         return "\(v) B"
+    }
+}
+
+// MARK: - 改名的键盘行为
+
+extension AccountPageController: NSTextFieldDelegate {
+    func control(_ control: NSControl, textView: NSTextView,
+                 doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            cancelRename()
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            commitRename()
+            return true
+        }
+        return false
     }
 }

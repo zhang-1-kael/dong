@@ -827,11 +827,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 调试用：VW_ACCOUNT_SHOT=/tmp/account.png 把账号窗口拍成图后退出。
         // 配 VW_ACCOUNT_PAGE=auth|profile|edit|password 指定停在哪个页面。
         if let path = ProcessInfo.processInfo.environment["VW_ACCOUNT_SHOT"] {
-            let wc = AccountWindowController()
-            wc.present(near: nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                wc.debugSnapshot(to: path)
-                exit(0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if self.libraryWC == nil { self.showLibrary() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    if let panel = self.libraryWC?.debugOpenAccountForShot() {
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_RENAME"] != nil {
+                            panel.page.debugBeginRename()
+                        }
+                        panel.debugSnapshot(to: path)
+                        print("[account] panel size=\(panel.bounds.size) content=\(panel.contentHeight)")
+                    }
+                    exit(0)
+                }
             }
         }
 

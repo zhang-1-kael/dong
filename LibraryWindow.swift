@@ -3047,8 +3047,11 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var dockBar: NSView?
     private var dockShield: NSView?
     private var settingsDarkSwitch: NSSwitch?
-    /// 账号窗口（固定 400×432），首次点开时才创建，关掉就释放内容视图
-    private var accountWC: AccountWindowController?
+    /// 账号面板：贴在窗口右下角的卡片（不是独立窗口），首次点开时才创建
+    private var accountPanel: AccountPanel?
+    private var accountHeight: NSLayoutConstraint?
+    private var accountMonitor: Any?
+    private var accountKeyMonitor: Any?
     /// 设置弹层（匿名统计开关 + 检查更新）
     private var settingsPop: NSPopover?
     /// 画面微调弹层
@@ -3858,7 +3861,8 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     /// 调试用：命令行里直接把账号窗口打开（量内存、肉眼核对都用得上）
     func debugOpenAccount() { toggleAccount() }
 
-    /// 点底栏头像：打开账号窗口。已经是同一个窗口，重复点就把它提到前面。
+    /// 点底栏头像：账号面板从下面升起来；再点收起。
+    /// 面板是壁纸库窗口里的一张卡片，不是独立窗口——不拖动、没有关闭按钮。
     private func toggleAccount() {
         guard SyncConfig.isConfigured || SyncCenter.shared.isLoggedIn else {
             let a = NSAlert()
@@ -3867,11 +3871,110 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             a.runModal()
             return
         }
-        if accountWC == nil {
-            accountWC = AccountWindowController()
+        if let panel = accountPanel, !panel.isHidden {
+            hideAccountPanel()
+        } else {
+            showAccountPanel()
         }
-        accountWC?.present(near: window)
         avatarPill?.refresh()
+    }
+
+    private func showAccountPanel() {
+        guard let win = window, let content = win.contentView else { return }
+        let panel: AccountPanel
+        if let p = accountPanel {
+            panel = p
+        } else {
+            panel = AccountPanel()
+            panel.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(panel, positioned: .above, relativeTo: nil)
+            let h = panel.heightAnchor.constraint(equalToConstant: panel.contentHeight)
+            NSLayoutConstraint.activate([
+                panel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+                // 底边贴着底栏上方：底栏 + 12 的空隙
+                panel.bottomAnchor.constraint(equalTo: content.bottomAnchor,
+                                              constant: -(Look.barHeight + 12)),
+                panel.widthAnchor.constraint(equalToConstant: AccountPanel.width),
+                h,
+            ])
+            accountHeight = h
+            panel.onResize = { [weak self] in
+                guard let self, let panel = self.accountPanel else { return }
+                self.accountHeight?.constant = panel.contentHeight
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.16
+                    ctx.allowsImplicitAnimation = true
+                    self.window?.contentView?.layoutSubtreeIfNeeded()
+                }
+            }
+            accountPanel = panel
+        }
+        panel.isHidden = false
+        panel.alphaValue = 0
+        panel.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: -10))
+        panel.page.reload()
+        accountHeight?.constant = panel.contentHeight
+        content.layoutSubtreeIfNeeded()
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.22
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.24)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+        panel.layer?.setAffineTransform(.identity)
+        CATransaction.commit()
+
+        installAccountMonitor()
+    }
+
+    private func hideAccountPanel() {
+        guard let panel = accountPanel, !panel.isHidden else { return }
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.16
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            panel.isHidden = true
+            panel.alphaValue = 1
+        })
+        removeAccountMonitor()
+    }
+
+    /// 点在面板外面就收起（但点击照常传下去，用户可能就是想点那张壁纸）
+    private func installAccountMonitor() {
+        removeAccountMonitor()
+        accountMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+            guard let self, let panel = self.accountPanel, !panel.isHidden,
+                  let win = self.window, e.window === win else { return e }
+            let p = panel.convert(e.locationInWindow, from: nil)
+            if panel.bounds.contains(p) { return e }
+            // 点的是头像本身：交给头像去切换，别在这里先收起再被点开
+            if let pill = self.avatarPill {
+                let r = pill.convert(pill.bounds, to: nil)
+                if r.contains(e.locationInWindow) { return e }
+            }
+            // 吞掉这次点击：只收起面板。否则用户「点空白处关掉」会顺手把壁纸也换了
+            self.hideAccountPanel()
+            return nil
+        }
+        accountKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] e in
+            guard let self, e.keyCode == 53, let panel = self.accountPanel, !panel.isHidden else { return e }
+            self.hideAccountPanel()
+            return nil
+        }
+    }
+
+    private func removeAccountMonitor() {
+        if let m = accountMonitor { NSEvent.removeMonitor(m); accountMonitor = nil }
+        if let m = accountKeyMonitor { NSEvent.removeMonitor(m); accountKeyMonitor = nil }
+    }
+
+    /// 调试用：直接打开面板（截图、量内存都用它）
+    func debugOpenAccountForShot() -> AccountPanel? {
+        showAccountPanel()
+        return accountPanel
     }
 
     @objc private func darkModeChanged(_ sender: NSSwitch) {
