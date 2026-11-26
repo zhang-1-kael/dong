@@ -1337,6 +1337,28 @@ final class GalleryView: NSView {
 ///
 /// `floating` 让整块"浮"起来：模糊内容放在内层裁剪，圆角阴影画在外层，
 /// 这样有阴影也不会被 `masksToBounds` 切掉。
+/// 底栏那一条「死区」。
+///
+/// 底栏是半透明浮在卡片上的，但它的**可点区域只有可视矩形**：栏下 18pt 留白、
+/// 栏的阴影、以及栏与卡片之间的缝，点到都会落到下面的壁纸卡片上，直接换壁纸——
+/// 用户感受就是「点了一下底栏，桌面莫名其妙变了」。
+/// 这个视图把整条底栏带（栏下留白 + 栏本身的高度）铺满并吞掉鼠标事件，
+/// 栏上的按钮因为层级更高，照常可以点。
+final class DockShield: NSView {
+    /// 必须自己判边界：父视图调用子视图 hitTest 时不会替我们检查 frame，
+    /// 直接 return self 会把整个窗口的点击都吃进来（实测连卡片都点不动了）。
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let sv = superview else { return nil }
+        let local = convert(point, from: sv)
+        return bounds.contains(local) ? self : nil
+    }
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) {}
+    override func otherMouseDown(with event: NSEvent) {}
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+}
+
 final class GlassView: NSView {
     /// 亮玻璃（浅色底盘）／暗玻璃（近黑悬浮底）／清水玻璃（几乎没有底色，只留一层薄雾和反光）
     enum Chrome { case light, dark, clear }
@@ -2756,6 +2778,7 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         // floating 让它整块抬起，底下带一层柔和的投影，卡片从阴影里穿过去。
         let bar = GlassView(radius: 22, tint: 0.10, material: .popover,
                             chrome: .dark, floating: true)
+        dockBar = bar
 
         let enabledPill = SettingPill(title: "动态", symbol: "play.fill", on: true)
         enabledPill.onText = "动态"
@@ -2928,6 +2951,12 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
         overlay = DropOverlay()
 
         shell.addSubview(scroll)
+
+        // 底栏死区：先于 bar 加入，所以栏本身和栏上的按钮仍然在最上层可点
+        let shield = DockShield()
+        shield.translatesAutoresizingMaskIntoConstraints = false
+        shell.addSubview(shield)
+        dockShield = shield
         shell.addSubview(bar)
         shell.addSubview(linkField)
         shell.addSubview(emptyView)
@@ -2947,6 +2976,12 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
             bar.trailingAnchor.constraint(equalTo: shell.trailingAnchor, constant: -Look.barInset),
             bar.bottomAnchor.constraint(equalTo: shell.bottomAnchor, constant: -Look.barInset),
             bar.heightAnchor.constraint(equalToConstant: Look.barHeight),
+
+            // 死区：从窗口底边一直盖到栏顶再往上 10pt（阴影那一圈也不再漏）
+            shield.leadingAnchor.constraint(equalTo: shell.leadingAnchor),
+            shield.trailingAnchor.constraint(equalTo: shell.trailingAnchor),
+            shield.bottomAnchor.constraint(equalTo: shell.bottomAnchor),
+            shield.topAnchor.constraint(equalTo: bar.topAnchor, constant: -10),
 
             // 链接框：底座里头靠左，高度跟着条走，宽度可缩
             linkField.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 9),
@@ -3009,6 +3044,8 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
     private var folderPill: SettingPill?
     private var settingsPill: SettingPill?
     private var avatarPill: AvatarPill?
+    private var dockBar: NSView?
+    private var dockShield: NSView?
     private var settingsDarkSwitch: NSSwitch?
     /// 账号窗口（固定 400×432），首次点开时才创建，关掉就释放内容视图
     private var accountWC: AccountWindowController?
@@ -3775,6 +3812,48 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
     /// 把 Analytics / Updater 的当前状态画到弹层上
     // MARK: 账号
+
+    /// 调试用：在账号头像上合成一次真实点击（走窗口的事件分发，不碰系统鼠标）
+    func debugSyntheticClick() {
+        guard let win = window, let content = win.contentView, let pill = avatarPill else { return }
+        let r = pill.convert(pill.bounds, to: content)
+        let p = NSPoint(x: r.midX, y: r.midY)
+        print("[click] point=\(Int(p.x)),\(Int(p.y)) hit=\(content.hitTest(p).map { String(describing: type(of: $0)) } ?? "nil")")
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [],
+                                             timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: win.windowNumber, context: nil,
+                                             eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+            win.sendEvent(e)
+        }
+    }
+
+    /// 调试用：打印鼠标落点命中的是哪个视图（排查「点底栏却切了壁纸」）
+    func debugHitTest() {
+        guard let win = window, let content = win.contentView else { return }
+        func probe(_ name: String, point p: NSPoint) {
+            let hit = content.hitTest(p)
+            print("[hit] \(name) @\(Int(p.x)),\(Int(p.y)) -> \(hit.map { String(describing: type(of: $0)) } ?? "nil")")
+        }
+        if let pill = avatarPill {
+            let r = pill.convert(pill.bounds, to: content)
+            probe("avatar", point: NSPoint(x: r.midX, y: r.midY))
+        }
+        if let bar = dockBar {
+            let r = bar.convert(bar.bounds, to: content)
+            probe("bar-center", point: NSPoint(x: r.midX, y: r.midY))
+            probe("bar-left", point: NSPoint(x: r.minX + 12, y: r.midY))
+            probe("shadow", point: NSPoint(x: r.midX, y: r.maxY + 6))
+            probe("below-bar", point: NSPoint(x: r.midX, y: r.minY - 8))
+            probe("above-bar", point: NSPoint(x: r.midX, y: r.maxY + 24))
+        }
+        if let b = dockBar, let sh = dockShield {
+            let br = b.convert(b.bounds, to: content)
+            let sr = sh.convert(sh.bounds, to: content)
+            print("[hit] bar=\(Int(br.minX)),\(Int(br.minY)),\(Int(br.width))x\(Int(br.height)) shield=\(Int(sr.minX)),\(Int(sr.minY)),\(Int(sr.width))x\(Int(sr.height))")
+        }
+        print("[hit] content size=\(content.bounds.size)")
+    }
 
     /// 调试用：命令行里直接把账号窗口打开（量内存、肉眼核对都用得上）
     func debugOpenAccount() { toggleAccount() }

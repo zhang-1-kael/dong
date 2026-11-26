@@ -54,6 +54,9 @@ final class SyncCenter {
     private(set) var avatarData: Data?
     /// 当前这轮同步的进度（没在同步时为 nil）
     private(set) var progress: SyncEngine.Progress?
+    /// 登录后「正在判断云端是否为空 → 切库」这一小段。界面据此显示「正在准备同步…」，
+    /// 否则用户会看到「已登录」却什么都没发生。
+    private(set) var isPreparing = false
     /// 调试：只摆拍不联网（截「同步中」的界面时用）
     private var previewOnly = false
     /// 切换壁纸库归属期间不跑同步，否则会把「不该属于这个账号的本地壁纸」传上去
@@ -109,6 +112,7 @@ final class SyncCenter {
         session = s
         AccountStore.save(s)
         status = .idle
+        isPreparing = true       // 界面从第一帧就能看到「正在准备同步…」
         watchLibrary()
 
         // 规则（用户 2026-11-25）：登录后只显示这个账号的壁纸；账号是空的才把本地并进去。
@@ -126,6 +130,7 @@ final class SyncCenter {
                 let msg = LibraryOwner.activate(accountId: userId, remoteIsEmpty: empty)
                 SyncEngine.log(Source.support, "切换壁纸库：\(msg)（cloudEmpty=\(empty)）")
                 self.isSwitchingLibrary = false
+                self.isPreparing = false
                 // 库换了，界面和桌面都要重读
                 NotificationCenter.default.post(name: SyncCenter.libraryDidChange, object: nil)
                 self.refreshProfile()

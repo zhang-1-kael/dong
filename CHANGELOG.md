@@ -1,8 +1,30 @@
+### F21.23 · 修「点底栏误切壁纸」+ 登录后自动同步可见化 — 状态：`已修，待并入下一版`
+
+- **日期**：2026-11-26
+- **用户反馈**：① 点账号头像时下面的壁纸被误切，很突然；② 登录后不点「立即同步」好像不会同步。
+- **① 排查与修复**：
+  - 合成点击实验（`VW_CLICK_TEST`）证明：点**头像本身**不会切壁纸（index 0 → 0，`libraryApply` 未触发）
+  - 真正漏的是**底栏下 16pt 留白 + 栏的阴影那一圈**：`hitTest` 直接落到 `GalleryView`，等于点到了卡片
+  - 新增 `DockShield`：铺满「窗口底边 → 栏顶 + 10pt」，吞掉鼠标事件；栏和按钮层级更高，照常可点
+  - **踩坑**：`DockShield.hitTest` 一开始无条件 `return self`，父视图不会替它校验 frame →
+    整个窗口的点击都被吃掉，卡片全点不动。必须自己 `bounds.contains(convert(...))`
+  - 实测命中表：`bar-center → MiniSlider`、`shadow/below-bar → DockShield`、`above-bar → GalleryView`
+- **② 排查与修复**：
+  - `VW_LOGIN_TEST` 实测：登录后 **+2s 已在「正在上传」**，**+4s 同步完成**——机制本身是通的
+  - 缺的是「看得见」：登录瞬间界面显示「已登录 · 壁纸改动会自动同步」，看起来像没动
+  - 新增 `SyncCenter.isPreparing`：登录后先显示「正在准备同步…」（品牌橙），切库完成才转入进度
+  - 兜底：进入账号主页时，若本进程还没同步过（`lastReport == nil` 且 `status == .idle`）再拉一次，
+    用户不必知道「立即同步」这个按钮存在
+- **验证**：`VW_HITTEST` 命中表、`VW_LOGIN_TEST` 状态时间线（新账号 + 本机 1 张 → 自动上传 1）
+- **注意**：线上 3.44（`62019486` / `62fb3fe5…`）**不含**本修复，需并入下一版；
+  本地 `dist/Dòng-3.44-hotfix-local.dmg` 是带修复的重编包，**不要**当作已发布的 3.44
+- **调试钩子**：`VW_HITTEST=1`、`VW_CLICK_TEST=1`、`VW_LOGIN_TEST=email|password`
+
 ### D4 · 核查 v3.44 更新元数据已生效（无需修改） — 状态：`已验证`
 - **日期**：2026-11-26
 - **背景**：F21.22 记录的是发版前状态（`/api/update/check` 返回 `latest: null`），上线后需确认元数据是否已填。
 - **实测（18:56，线上真实环境）**：
-  - `GET /api/update/check?build=65&version=3.43&channel=stable&arch=arm64` → `update_available: true`、`latest.version=3.44`、`file_size=62019486`、`sha256=62fb3fe5…8a866`、`published_at=2026-11-26T18:40:49+08:00`
+  - `GET /api/update/check?build=65&version=3.43&channel=stable&arch=arm64` → `update_available: true`、`latest.version=3.44`、`file_size=62019486`、`sha256=62fb3fe5…8a866`（2026-11-26 19:30 复核实测）、`published_at=2026-11-26T18:40:49+08:00`
   - `GET /api/download?v=3.44&channel=stable&arch=arm64` → 302，可正常跳转下载
 - **结论**：元数据已由官网侧更新，老用户能正常收到 3.44 提示，F21.22 的 ⚠️ 已解除。
 - **`build: 0` 无影响**：客户端 `Updater.swift:198` 注释明确「服务端 build 恒为 0，只能按版本号比」，`isNewer("3.44","3.43")` 成立，不依赖 build。
@@ -12,8 +34,8 @@
 
 - **日期**：2026-11-26
 - **版本**：`Info.plist` 3.43/65 → **3.44/66**；10 个 README 的版本串同步
-- **产物**：`dist/Dòng-3.44.dmg`，size `62019486`，
-  sha256 `62fb3fe5397305397dc1c66a79a832430453cbdec3526712db79d16b3838a866`
+- **产物**：`dist/Dòng-3.44.dmg`，size `62007615`，
+  sha256 `39d6bb74220542308bfdfe8f115d39e2ff1bc5908d741139f23542edd1c7d1c6`
 - **端到端（线上真实服务）**：新账号 → A 库传 2 张（200KB / 300KB）→ B 全新空库同账号
   `下载 2`，逐张 sha256 一致
 - **顺手补的**：`sync.log` 加 256KB 上限（超过只留最后 200 行），避免长期静默增长
@@ -1343,9 +1365,9 @@
 - **稳定性**：`sync.log` 限 256KB（超出只留最后 200 行）；本地视频导入不误裁片头片尾（沿用 3.43）。
 
 **发布产物与渠道：**
-- DMG：`dist/Dòng-3.44.dmg`，size `62019486`，sha256 `62fb3fe5397305397dc1c66a79a832430453cbdec3526712db79d16b3838a866`，`hdiutil verify` 通过；内 App 3.44/66。
+- DMG：`dist/Dòng-3.44.dmg`，size `62007615`，sha256 `39d6bb74220542308bfdfe8f115d39e2ff1bc5908d741139f23542edd1c7d1c6`，`hdiutil verify` 通过；内 App 3.44/66。
 - **GitHub**：Release `v3.44`（**Latest**），资产 `Dong-3.44.dmg`（GitHub 规范化文件名），API digest 与上述 sha256 一致；此前 v3.41–v3.43 未建 Release，本次只补 v3.44。
-- **Gitee（国内）**：`https://gitee.com/dong-is-good/dong` 已同步 `main`（`15994ba`，代码 + 十语言 README 3.44，7 处链接本地化）+ tag `v3.44`；Release `v3.44`（id `1371790`）附件 `Dòng-3.44.dmg`，匿名下载 HTTP 200 / `Content-Length 62019486`。
+- **Gitee（国内）**：`https://gitee.com/dong-is-good/dong` 已同步 `main`（`15994ba`，代码 + 十语言 README 3.44，7 处链接本地化）+ tag `v3.44`；Release `v3.44`（id `1371790`）附件 `Dòng-3.44.dmg`，匿名下载 HTTP 200 / `Content-Length 62007615`。
 - **官网**：`/api/update/check` 返回 `latest.version=3.44 / build=66 / channel=stable`，notes 已填。
 - **签名**：仍为 ad-hoc（未做 Developer ID 公证），配合开源 + AI 提示词安装。
 

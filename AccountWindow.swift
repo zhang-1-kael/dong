@@ -302,6 +302,13 @@ final class AccountPageController: NSViewController {
             page = .profile
         }
         render()
+        // 兜底：进到主页时若这一轮还没同步过，主动拉一次——
+        // 用户不必知道「立即同步」这个按钮的存在。
+        if page == .profile,
+           SyncCenter.shared.lastReport == nil,
+           SyncCenter.shared.status == .idle {
+            SyncCenter.shared.syncNow()
+        }
     }
 
     /// 回到主页（子页面的「返回」和保存成功后都走这里）
@@ -795,7 +802,11 @@ final class AccountPageController: NSViewController {
         }
 
         let st = SyncCenter.shared.status
-        switch st {
+        if SyncCenter.shared.isPreparing {
+            profStatus?.stringValue = "正在准备同步…"
+            profStatus?.textColor = Brand.accent
+        } else {
+            switch st {
         case .syncing:
             profStatus?.stringValue = "正在同步"
             profStatus?.textColor = Brand.accent
@@ -805,9 +816,10 @@ final class AccountPageController: NSViewController {
         case .done:
             profStatus?.stringValue = "已同步"
             profStatus?.textColor = .systemGreen
-        default:
-            profStatus?.stringValue = "已登录"
-            profStatus?.textColor = .systemGreen
+            default:
+                profStatus?.stringValue = "已登录"
+                profStatus?.textColor = .systemGreen
+            }
         }
 
         let quota = quotaBytes > 0 ? quotaBytes : s.quotaBytes

@@ -767,6 +767,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // 调试用：VW_HITTEST=1 启动后打印底栏各点的命中视图
+        if ProcessInfo.processInfo.environment["VW_HITTEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                if self.libraryWC == nil { self.showLibrary() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.libraryWC?.debugHitTest()
+                    exit(0)
+                }
+            }
+        }
+
+        // 调试用：VW_CLICK_TEST=1 在头像位置合成一次点击，看会不会误切壁纸
+        if ProcessInfo.processInfo.environment["VW_CLICK_TEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                if self.libraryWC == nil { self.showLibrary() }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    print("[click] before index=\(self.index) videos=\(self.videos.count)")
+                    self.libraryWC?.debugSyntheticClick()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        print("[click] after index=\(self.index)")
+                        exit(0)
+                    }
+                }
+            }
+        }
+
+        // 调试用：VW_LOGIN_TEST=email|password 走一遍真实登录，观察是否自动开始同步
+        if let spec = ProcessInfo.processInfo.environment["VW_LOGIN_TEST"] {
+            let parts = spec.split(separator: "|", maxSplits: 1).map(String.init)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                guard parts.count == 2 else { print("[login] 参数不对"); exit(0) }
+                let r = AccountAPI.login(email: parts[0], password: parts[1])
+                switch r {
+                case let .success(session):
+                    print("[login] 登录成功，调用 signIn")
+                    SyncCenter.shared.signIn(session)
+                    for i in 1...6 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 2) {
+                            print("[login] +\(i * 2)s status=\(SyncCenter.shared.status.text) busy=\(SyncCenter.shared.status.isBusy)")
+                        }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 14) { exit(0) }
+                case let .failure(e):
+                    print("[login] 失败：\(e.localizedDescription)")
+                    exit(0)
+                }
+            }
+        }
+
         // 调试用：VW_ACCOUNT_OPEN=1 启动后直接把账号窗口打开（不退出，用来量内存/肉眼核对）
         if ProcessInfo.processInfo.environment["VW_ACCOUNT_OPEN"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
@@ -2477,6 +2526,10 @@ extension AppDelegate: WallpaperLibraryDelegate {
     func libraryCurrentIndex() -> Int { index }
 
     func libraryApply(index i: Int) {
+        if ProcessInfo.processInfo.environment["VW_CLICK_TEST"] != nil {
+            let stack = Thread.callStackSymbols.prefix(7).joined(separator: " | ")
+            print("[apply] index=\(i) stack=\(stack)")
+        }
         guard i >= 0, i < videos.count else { return }
         let switched = i != index
         index = i
