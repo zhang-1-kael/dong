@@ -22,6 +22,7 @@ const crypto = require("node:crypto");
 const storage = require("./storage");
 const emailcheck = require("./emailcheck");
 const mail = require("./mail");
+const notify = require("./notify");
 const snapshot = require("./snapshot");
 
 const PORT = Number(process.env.SYNC_PORT || process.env.PORT || 8787);
@@ -85,11 +86,50 @@ const F = {
   accounts: path.join(DATA_DIR, "accounts.json"),
   tokens: path.join(DATA_DIR, "tokens.json"),
   users: path.join(DATA_DIR, "users"),
+  // 记录哪些版本已经群发过通知，避免手滑发两遍
+  notify: path.join(DATA_DIR, "notify-log.json"),
 };
 
+// ── 管理后台（发布时群发更新通知）────────────────────────────
+// 令牌走环境变量 ADMIN_TOKEN，没配就整块关闭（返回 503，不暴露任何东西）。
+const ADMIN_TOKEN = String(process.env.ADMIN_TOKEN || "").trim();
+const notifyJobs = new Map(); // jobId -> { state, version, build, startedAt }
+
+function adminOk(req, url) {
+  if (!ADMIN_TOKEN) return false;
+  const auth = String(req.headers["authorization"] || "");
+  let got = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!got) got = String(url.searchParams.get("t") || "").trim();
+  if (!got || got.length !== ADMIN_TOKEN.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(ADMIN_TOKEN));
+  } catch {
+    return false;
+  }
+}
+
+function htmlPage(res, code, html) {
+  const data = Buffer.from(html);
+  res.writeHead(code, {
+    "content-type": "text/html; charset=utf-8",
+    "content-length": data.length,
+    "cache-control": "no-store",
+  });
+  res.end(data);
+}
+
+function baseUrlOf(req) {
+  const env = String(process.env.PUBLIC_BASE_URL || "").trim();
+  if (env) return env.replace(/\/+$/, "");
+  const proto = String(req.headers["x-forwarded-proto"] || "https").split(",")[0].trim();
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").trim();
+  return host ? `${proto}://${host}` : "";
+}
+
 // ── 极简持久化：内存一份 + 原子落盘 ─────────────────────────
-let accounts = {}; // email -> { id, salt, hash, createdAt, quotaBytes }
+let accounts = {}; // email -> { id, salt, hash, createdAt, quotaBytes, emailVerified, emailOptOut }
 let tokens = {};   // tokenHash -> { userId, expiresAt }
+let notifyLog = {}; // "3.46|68" -> { sentAt, sent, failed }
 
 function readJson(file, fallback) {
   try {
@@ -138,6 +178,7 @@ function takeCode(email, purpose, code) {
 async function initStore() {
   await fsp.mkdir(F.users, { recursive: true });
   accounts = readJson(F.accounts, {});
+  notifyLog = readJson(F.notify, {});
   tokens = readJson(F.tokens, {});
   // 清掉过期 token
   const now = Date.now();
@@ -261,6 +302,160 @@ function validEmail(s) {
   return typeof s === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length <= 160;
 }
 
+const NOTIFY_PAGE = `<!doctype html><html lang="zh-CN"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dòng · 发更新通知</title>
+<style>
+  :root { --ink:#26262a; --mute:#8b857d; --line:#e6e2dc; --accent:#e8944a; --bg:#f7f6f4; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; }
+  .wrap { max-width:560px; margin:38px auto 60px; background:#fff; border-radius:16px;
+          padding:30px 32px 26px; box-shadow:0 10px 30px rgba(0,0,0,.06); }
+  h1 { font-size:20px; margin:0 0 4px; letter-spacing:-.01em }
+  .sub { color:var(--mute); font-size:13px; margin-bottom:22px }
+  label { display:block; font-size:12.5px; color:var(--mute); margin:14px 0 6px }
+  input[type=text], input[type=password], textarea {
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:9px;
+    font:inherit; font-size:14px; background:#fbfaf9; outline:none }
+  input:focus, textarea:focus { border-color:var(--accent); background:#fff }
+  textarea { min-height:150px; resize:vertical; line-height:1.65 }
+  .row { display:flex; gap:12px } .row > div { flex:1 }
+  .check { display:flex; gap:10px; align-items:flex-start; margin:20px 0 6px;
+           padding:14px; border:1px solid var(--line); border-radius:11px; background:#fbfaf9 }
+  .check input { margin-top:3px } .check b { font-size:14px }
+  .check span { display:block; color:var(--mute); font-size:12.5px }
+  button { border:0; border-radius:9px; font:inherit; font-weight:600; font-size:14px;
+           padding:11px 18px; cursor:pointer }
+  .primary { background:var(--accent); color:#fff }
+  .primary:disabled { opacity:.45; cursor:not-allowed }
+  .ghost { background:#f1efec; color:var(--ink) }
+  .acts { display:flex; gap:10px; margin-top:20px; flex-wrap:wrap }
+  .msg { margin-top:16px; font-size:13.5px; white-space:pre-wrap }
+  .bar { height:6px; background:#eee; border-radius:4px; overflow:hidden; margin-top:12px; display:none }
+  .bar > i { display:block; height:100%; width:0; background:var(--accent); transition:width .25s }
+  .hint { color:var(--mute); font-size:12px; margin-top:6px }
+  .ok { color:#2f8f4e } .bad { color:#c0392b }
+</style>
+<div class="wrap">
+  <h1>发「新版本」通知</h1>
+  <div class="sub">发布后在这里勾一下，就给所有注册用户发一封更新邮件。不勾就什么都不用做。</div>
+
+  <label>管理令牌</label>
+  <input id="tok" type="password" placeholder="ADMIN_TOKEN（只存在本机浏览器里）">
+
+  <div class="row">
+    <div><label>版本号</label><input id="ver" type="text" placeholder="3.46"></div>
+    <div><label>build</label><input id="build" type="text" placeholder="68"></div>
+  </div>
+
+  <label>更新内容（一行一条，用「·」开头；这几行会变成邮件里的列表）</label>
+  <textarea id="notes" placeholder="· 修复退出登录后再登录，壁纸空白两三分钟的问题&#10;· 点底栏空白处不再误切壁纸"></textarea>
+
+  <div class="check">
+    <input id="send" type="checkbox">
+    <div><b>给所有用户发这封通知</b>
+      <span>不勾也行：可以先不勾，点「预览收件人数」看人数和邮件标题。</span></div>
+  </div>
+
+  <div class="acts">
+    <button class="ghost" id="preview">预览收件人数</button>
+    <button class="ghost" id="test">先发给我自己（1 封）</button>
+    <button class="primary" id="go" disabled>发送给所有用户</button>
+  </div>
+
+  <div class="bar" id="bar"><i></i></div>
+  <div class="msg" id="msg"></div>
+  <div class="hint">同一个版本只发一次；重发需要在接口里带 force。每封邮件底部都有退订链接。</div>
+</div>
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var tok = function () { return $("tok").value.trim(); };
+$("tok").value = localStorage.getItem("dongAdminTok") || "";
+$("tok").addEventListener("input", function () { localStorage.setItem("dongAdminTok", tok()); });
+$("send").addEventListener("change", function () { $("go").disabled = !$("send").checked; });
+
+function say(text, cls) {
+  var m = $("msg");
+  m.className = "msg " + (cls || "");
+  m.textContent = text;
+}
+function payload(extra) {
+  var base = {
+    version: $("ver").value.trim(),
+    build: Number($("build").value.trim() || 0),
+    notes: $("notes").value
+  };
+  for (var k in (extra || {})) base[k] = extra[k];
+  return base;
+}
+function call(path, opts) {
+  return fetch(path, Object.assign({
+    headers: { "content-type": "application/json", authorization: "Bearer " + tok() }
+  }, opts || {})).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (j) {
+      if (!r.ok) throw new Error(j.error || ("请求失败 " + r.status));
+      return j;
+    });
+  });
+}
+
+$("preview").onclick = function () {
+  say("查询中…");
+  call("/api/admin/notify", { method: "POST", body: JSON.stringify(payload({ dryRun: true })) })
+    .then(function (j) {
+      var text = "收件人 " + j.recipients + " 人";
+      if (j.skippedOptOut) text += "，已退订 " + j.skippedOptOut + " 人跳过";
+      if (j.alreadyNotified) text += "\n⚠ 这个版本已经发过 " + j.alreadyNotified.sent + " 人";
+      text += "\n邮件标题：" + j.subject;
+      say(text, j.alreadyNotified ? "bad" : "ok");
+    })
+    .catch(function (e) { say(e.message, "bad"); });
+};
+
+$("test").onclick = function () {
+  say("正在给第一个用户发一封测试信…");
+  call("/api/admin/notify", { method: "POST", body: JSON.stringify(payload({ limit: 1, force: true })) })
+    .then(function (j) { poll(j.jobId); })
+    .catch(function (e) { say(e.message, "bad"); });
+};
+
+$("go").onclick = function () {
+  if (!$("send").checked) return;
+  if (!confirm("确定给所有用户发这封更新通知？发出后撤不回来。")) return;
+  say("开始发送…");
+  $("go").disabled = true;
+  $("bar").style.display = "block";
+  call("/api/admin/notify", { method: "POST", body: JSON.stringify(payload()) })
+    .then(function (j) { poll(j.jobId); })
+    .catch(function (e) { say(e.message, "bad"); $("go").disabled = false; });
+};
+
+function poll(id) {
+  $("bar").style.display = "block";
+  var tick = function () {
+    setTimeout(function () {
+      call("/api/admin/notify-status?id=" + id).then(function (j) {
+        var doneCount = j.sent + j.failed;
+        var pct = j.total ? Math.round(doneCount / j.total * 100) : 0;
+        $("bar").firstElementChild.style.width = pct + "%";
+        var text = "已发 " + j.sent + " · 失败 " + j.failed + " · 共 " + j.total;
+        if (j.current) text += "（正在发 " + j.current + "）";
+        say(text);
+        if (j.done) {
+          var fin = "完成：成功 " + j.sent + "，失败 " + j.failed + "。";
+          if (j.errors && j.errors.length) fin += "\n" + j.errors.slice(0, 5).join("\n");
+          say(fin, j.failed ? "bad" : "ok");
+          return;
+        }
+        tick();
+      }).catch(function (e) { say(e.message, "bad"); });
+    }, 900);
+  };
+  tick();
+}
+</script></html>`;
+
 // ── 路由 ────────────────────────────────────────────────────
 async function handle(req, res) {
   const url = new URL(req.url, "http://localhost");
@@ -283,7 +478,99 @@ async function handle(req, res) {
     });
   }
 
-  // ---- 公开配置（客户端据此决定要不要显示「验证码」那一行）----
+  // 发布后用来「勾一下发通知」的小页面（纯前端，所有动作都要令牌）
+  if (p === "/admin/notify" && method === "GET") {
+    return htmlPage(res, 200, NOTIFY_PAGE);
+  }
+
+  // ---- 管理：发布时群发更新通知 ----
+  // 官网发布后台勾了「给用户发更新通知」就调这里；不勾就什么都不用调。
+  if (p === "/api/admin/notify" && method === "POST") {
+    if (!ADMIN_TOKEN) return fail(res, 503, "未配置管理令牌");
+    if (!adminOk(req, url)) return fail(res, 401, "没有权限");
+    let body;
+    try {
+      body = JSON.parse(await readBody(req, 256 * 1024) || "{}");
+    } catch {
+      return fail(res, 400, "请求格式不对");
+    }
+    const version = String(body.version || "").trim();
+    const build = Number(body.build || 0);
+    const notes = String(body.notes || "");
+    if (!/^\d+\.\d+(\.\d+)?$/.test(version)) return fail(res, 400, "版本号格式不对");
+    if (!(build > 0)) return fail(res, 400, "build 不对");
+    if (!mail.isConfigured()) return fail(res, 503, "还没配置发信通道");
+
+    const key = `${version}|${build}`;
+    const done = notifyLog[key];
+    if (done && !body.force) {
+      return fail(res, 409, `这个版本在 ${new Date(done.sentAt).toLocaleString("zh-CN")} 已经通知过 ${done.sent} 人；要再发请显式重发`);
+    }
+    const recipients = Object.values(accounts).filter((u) => u && u.id && !u.emailOptOut).length;
+    if (body.dryRun) {
+      return send(res, 200, {
+        ok: true, dryRun: true, recipients,
+        skippedOptOut: Object.values(accounts).filter((u) => u && u.emailOptOut).length,
+        alreadyNotified: done || null,
+        provider: mail.providerName(),
+        subject: `Dòng ${version} 已发布`,
+      });
+    }
+    if (!recipients) return fail(res, 400, "还没有可发的用户");
+
+    const jobId = crypto.randomUUID().slice(0, 8);
+    const state = { total: recipients, sent: 0, failed: 0, done: false, errors: [], current: "" };
+    notifyJobs.set(jobId, { state, version, build, startedAt: Date.now() });
+
+    const base = baseUrlOf(req);
+    notify.broadcast({
+      accounts,
+      version, build, notes, baseUrl: base,
+      // 试跑模式只发前 N 个（想先给自己发一封就用 limit=1）
+      limit: Number(body.limit || 0),
+      onProgress: (st) => { Object.assign(state, st); },
+    }).then(async (final) => {
+      notifyLog[key] = { sentAt: Date.now(), sent: final.sent, failed: final.failed };
+      try { await writeJson(F.notify, notifyLog); } catch { /* 记账失败不影响已发出的信 */ }
+      console.log(`[notify] ${key} 发送完成：成功 ${final.sent} / 失败 ${final.failed}`);
+    }).catch((e) => {
+      state.done = true;
+      state.errors.push(String(e && e.message || e));
+      console.error("[notify] 任务出错", String(e && e.message || e));
+    });
+
+    return send(res, 200, { ok: true, jobId, recipients });
+  }
+
+  if (p === "/api/admin/notify-status" && method === "GET") {
+    if (!ADMIN_TOKEN) return fail(res, 503, "未配置管理令牌");
+    if (!adminOk(req, url)) return fail(res, 401, "没有权限");
+    const job = notifyJobs.get(String(url.searchParams.get("id") || ""));
+    if (!job) return fail(res, 404, "没有这个任务");
+    return send(res, 200, { ok: true, version: job.version, build: job.build, ...job.state });
+  }
+
+  // 退订：邮件里点一下就生效，不需要登录
+  if (p === "/api/mail/unsubscribe" && method === "GET") {
+    const uid = String(url.searchParams.get("u") || "");
+    const t = String(url.searchParams.get("t") || "");
+    const hit = Object.entries(accounts).find(([, u]) => u && u.id === uid);
+    const ok = hit && t && t === notify.unsubToken(uid);
+    if (ok) {
+      hit[1].emailOptOut = true;
+      accounts[hit[0]] = hit[1];
+      await writeJson(F.accounts, accounts);
+      snapshot.markDirtySoon();
+    }
+    return htmlPage(res, ok ? 200 : 400, `<!doctype html><meta charset="utf-8">
+      <title>${ok ? "已退订" : "链接无效"}</title>
+      <div style="max-width:460px;margin:80px auto;font-family:-apple-system,'PingFang SC',sans-serif;color:#26262a;text-align:center">
+        <h2 style="font-weight:600">${ok ? "已退订更新通知" : "这个链接无效"}</h2>
+        <p style="color:#8b857d;font-size:14px">${ok ? "以后有新版不会再打扰你。想重新订阅，登录后在账号里联系我们即可。" : "可能是链接不完整，或者这个账号已经不存在了。"}</p>
+      </div>`);
+  }
+
+  // 公开配置（客户端据此决定要不要显示「验证码」那一行）
   if (p === "/api/auth/config" && method === "GET") {
     return send(res, 200, { mail: mail.isConfigured(), mailCodeRequired: codeRequired() });
   }

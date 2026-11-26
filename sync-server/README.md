@@ -44,6 +44,9 @@ node server.js            # 监听 :8787，数据写到 ./data
 | `MAIL_ALIYUN_TEMPLATE` | 无 | 阿里云控制台里建的发信模板 ID（阿里云要求用模板发信） |
 | `MAIL_REQUIRE_CODE` | 跟随发信 | 设 `0` 可以「能发信但不强制验证码」，用于客户端还没升级时的过渡 |
 | `MAIL_DEV_ECHO` | 未设 | 设 `1` 且 `console` 模式下，验证码接口会回显 `devCode`（**只能本地用**） |
+| `ADMIN_TOKEN` | 无 | 发布后台的管理令牌；不设＝群发通知功能整体关闭（接口返回 503） |
+| `PUBLIC_BASE_URL` | 取请求头 | 邮件里下载/退订链接的基地址；反代没带对 `X-Forwarded-*` 时要显式设 |
+| `MAIL_UNSUB_SECRET` | 退回用 `ADMIN_TOKEN` | 退订链接的签名密钥；换掉会让旧退订链接失效 |
 
 ### 放到服务器上
 
@@ -151,6 +154,10 @@ App 里「登录」会直接提示不可用，不会往猜的域名发密码。
 | POST | `/api/auth/recovery/reset` | 用 `{email, code, newPassword}` 重设密码，**不需要登录**；成功后清空恢复码并踢掉所有设备 |
 | POST | `/api/auth/password` | 改密码 `{oldPassword,newPassword}`；成功后作废其它设备令牌，当前设备保留 |
 | GET | `/api/me` | 邮箱、配额、已用字节 |
+| GET | `/admin/notify` | 发布后用的「发更新通知」小页面（纯前端，动作都要管理令牌） |
+| POST | `/api/admin/notify` | 群发更新通知 `{version,build,notes,dryRun?,limit?,force?}`；同一版本只发一次 |
+| GET | `/api/admin/notify-status?id=` | 群发进度 `{total,sent,failed,done,current,errors}` |
+| GET | `/api/mail/unsubscribe?u=&t=` | 退订链接（邮件里点一下即生效，免登录） |
 | GET | `/api/sync/manifest` | 清单（含 `rev`） |
 | PUT | `/api/sync/manifest` | 写清单，带 `if-match: <rev>`，对不上返回 409 |
 | PUT | `/api/sync/asset/:id` | 上传壁纸（octet-stream） |

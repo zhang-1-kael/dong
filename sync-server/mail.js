@@ -115,24 +115,30 @@ function codeMail(code, purpose) {
   return { subject, html };
 }
 
+/// 通用发信。验证码和「新版本通知」都走这里。
 /// @returns {Promise<{ok:boolean, dev?:boolean, error?:string}>}
-async function sendCode(to, code, purpose = "register") {
+async function send(to, subject, html) {
   const p = providerName();
-  const { subject, html } = codeMail(code, purpose);
   if (p === "console") {
-    console.log(`[mail] 验证码 → ${to}：${code}（${purpose}）`);
+    console.log(`[mail] 模拟发送 → ${to}｜${subject}`);
     return { ok: true, dev: true };
   }
   if (p === "off") return { ok: false, error: "邮箱验证暂未开通" };
   try {
     if (p === "resend") await sendViaResend(to, subject, html);
     else await sendViaAliyun(to, subject, html);
-    console.log(`[mail] 已发送 → ${to}`);
+    console.log(`[mail] 已发送 → ${to}｜${subject}`);
     return { ok: true };
   } catch (e) {
     console.error("[mail] 发送失败", String(e && e.message || e));
-    return { ok: false, error: "验证码发送失败，稍后再试" };
+    return { ok: false, error: "发送失败，稍后再试" };
   }
 }
 
-module.exports = { isConfigured, sendCode, providerName };
+/// @returns {Promise<{ok:boolean, dev?:boolean, error?:string}>}
+async function sendCode(to, code, purpose = "register") {
+  const { subject, html } = codeMail(code, purpose);
+  return send(to, subject, html);
+}
+
+module.exports = { isConfigured, send, sendCode, providerName };
