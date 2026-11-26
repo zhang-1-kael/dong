@@ -281,18 +281,24 @@ enum SyncEngine {
                     support: URL,
                     stateKey: String = "anonymous",
                     webStreams: [(id: String, name: String, url: String, addedAt: Date)],
+                    cancel: CancelToken? = nil,
                     addWebStream: (String, String, String) -> Void,
                     removeWebStream: (String) -> Void,
                     progress: ((Progress) -> Void)? = nil) -> Result<Report, AccountError> {
+        /// 退出登录 / 换账号了：立刻收手，清单也不写了（写了会把旧账号的结论落到新状态里）
+        func aborted() -> Bool { cancel?.isCancelled ?? false }
+
+        if aborted() { return .failure(.cancelled) }
         var state = loadState(support, key: stateKey)
         var report = Report()
 
         let knownBefore = Set(state.items.keys)
-        let remoteResult = AccountAPI.manifest(token: session.token)
+        let remoteResult = AccountAPI.manifest(token: session.token, cancel: cancel)
         guard case let .success(remote) = remoteResult else {
             if case let .failure(e) = remoteResult { return .failure(e) }
             return .failure(.decoding)
         }
+        if aborted() { return .failure(.cancelled) }
 
         let local = snapshot(libraryDir: libraryDir, webStreams: webStreams, support: support, state: &state)
         let (actions, merged, order) = plan(local: local, remote: remote, state: state)
@@ -304,6 +310,7 @@ enum SyncEngine {
         var uploadedItems: [RemoteItem] = []
 
         func pushPartial() {
+            if aborted() { return }
             var items = remote.items
             let known = Set(items.map { $0.id })
             for it in uploadedItems where !known.contains(it.id) { items.append(it) }
@@ -311,7 +318,8 @@ enum SyncEngine {
             let order = local.map { $0.id }.filter { id in items.contains { $0.id == id && !$0.isDeleted } }
             if case let .success((rev, _)) = AccountAPI.putManifest(token: session.token,
                                                                     ifMatch: liveRev,
-                                                                    items: items, order: order) {
+                                                                    items: items, order: order,
+                                                                    cancel: cancel) {
                 liveRev = rev
             }
         }
@@ -353,6 +361,10 @@ enum SyncEngine {
         emit("正在准备…")
 
         for a in actions {
+            if aborted() {
+                log(support, "同步已取消（退出登录或换账号），本轮只完成 \(report.uploaded) 张")
+                return .failure(.cancelled)
+            }
             step += 1
             // 文案里不再带计数（计数在下面那行明细），避免和明细重复
             let label: String
@@ -371,7 +383,9 @@ enum SyncEngine {
                 var lastPercent = -1
                 var uploadResult: Result<String, AccountError> = .failure(.network("未开始"))
                 for attempt in 1...2 {
+                if aborted() { uploadResult = .failure(.cancelled); break }
                 uploadResult = AccountAPI.upload(token: session.token, id: item.id, file: file,
+                                         cancel: cancel,
                                          onProgress: { sent, _ in
                     // 每涨 1% 才刷一次界面
                     emitLock.lock()
@@ -382,6 +396,7 @@ enum SyncEngine {
                     if should { emit(label, extra: sent) }
                 })
                 if case .success = uploadResult { break }
+                if case .failure(.cancelled) = uploadResult { break }
                 if attempt == 1 {
                     if case let .failure(e) = uploadResult {
                         log(support, "上传重试 \(item.id)：\(e.localizedDescription)")
@@ -402,6 +417,10 @@ enum SyncEngine {
                                                     deleted: false))
                     pushPartial()     // 传一张就登记一张，断了也不至于全丢
                 case let .failure(e):
+                    if case .cancelled = e {
+                        log(support, "同步已取消（上传途中），下一轮再续")
+                        return .failure(.cancelled)
+                    }
                     failedIds.insert(item.id)
                     report.errors.append("\(item.name)：\(e.localizedDescription)")
                     log(support, "上传失败 \(item.id)：\(e.localizedDescription)")
@@ -410,7 +429,7 @@ enum SyncEngine {
                 let name = item.name.isEmpty ? item.id : item.name
                 let ext = item.kind == "web" ? "" : ".mp4"
                 let dest = libraryDir.appendingPathComponent(sanitize(name) + ext)
-                switch AccountAPI.download(token: session.token, id: item.id, to: dest) {
+                switch AccountAPI.download(token: session.token, id: item.id, to: dest, cancel: cancel) {
                 case .success:
                     report.downloaded += 1
                     // 下载后校正 mtime，否则下次比较会以为是本地新改的
@@ -418,6 +437,10 @@ enum SyncEngine {
                         [.modificationDate: Date(timeIntervalSince1970: Double(item.updatedAt) / 1000)],
                         ofItemAtPath: dest.path)
                 case let .failure(e):
+                    if case .cancelled = e {
+                        log(support, "同步已取消（下载途中），下一轮再续")
+                        return .failure(.cancelled)
+                    }
                     failedIds.insert(item.id)
                     report.errors.append("\(item.name)：\(e.localizedDescription)")
                     log(support, "上传失败 \(item.id)：\(e.localizedDescription)")
@@ -443,9 +466,14 @@ enum SyncEngine {
         let finalItems = merged.filter { !failedIds.contains($0.id) }
         let finalOrder = order.filter { !failedIds.contains($0) }
 
+        // 取消发生在收尾之前：清单不能写，写了等于替新账号/未登录状态做了决定
+        if aborted() {
+            log(support, "同步已取消，清单未写入")
+            return .failure(.cancelled)
+        }
         emit("正在更新云端清单…")
         switch AccountAPI.putManifest(token: session.token, ifMatch: liveRev,
-                                      items: finalItems, order: finalOrder) {
+                                      items: finalItems, order: finalOrder, cancel: cancel) {
         case let .success((rev, _)):
             state.rev = rev
             state.items = Dictionary(uniqueKeysWithValues: finalItems.filter { !$0.isDeleted }.map { ($0.id, $0.sha256) })
@@ -457,7 +485,7 @@ enum SyncEngine {
 
         // 这一轮新产生的墓碑，云端文件直接回收（否则单设备删除会一直占配额）
         for item in finalItems where item.isDeleted && knownBefore.contains(item.id) {
-            if item.kind != "web" { AccountAPI.deleteAsset(token: session.token, id: item.id) }
+            if item.kind != "web" { AccountAPI.deleteAsset(token: session.token, id: item.id, cancel: cancel) }
         }
         log(support, "同步结束：上传 \(report.uploaded) 下载 \(report.downloaded) 删除 \(report.removed) 失败 \(report.errors.count)")
         report.order = finalOrder

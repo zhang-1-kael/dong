@@ -49,6 +49,7 @@ enum AccountError: LocalizedError {
     case http(Int, String)
     case network(String)
     case decoding
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -56,7 +57,27 @@ enum AccountError: LocalizedError {
         case let .http(code, msg): return "\(msg)（\(code)）"
         case let .network(msg): return "网络不通：\(msg)"
         case .decoding: return "服务器返回的格式看不懂"
+        case .cancelled: return "已取消"
         }
+    }
+}
+
+/// 一次同步的「取消票」。退出登录 / 换账号时作废它，正在跑的那一轮据此尽快收手。
+///
+/// 之前没有这个：退出登录只是把界面切成未登录，后台那轮同步还在串行队列上跑
+/// （上传卡住时最长要等 5 分钟看门狗）。用户重新登录后，「读清单 → 切库 → 拉资料」
+/// 全排在这轮后面，于是账号看着是空的、昵称头像也是空的（用户 2026-11-26 遇到的）。
+final class CancelToken {
+    private let lock = NSLock()
+    private var flag = false
+
+    var isCancelled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return flag
+    }
+
+    func cancel() {
+        lock.lock(); flag = true; lock.unlock()
     }
 }
 
@@ -132,11 +153,12 @@ enum AccountAPI {
     }
 
     @discardableResult
-    private static func send(_ req: URLRequest) -> Result<(Data, Int), AccountError> {
+    private static func send(_ req: URLRequest,
+                             cancel: CancelToken? = nil) -> Result<(Data, Int), AccountError> {
         guard SyncConfig.isConfigured else { return .failure(.notConfigured) }
         let sem = DispatchSemaphore(value: 0)
         var result: Result<(Data, Int), AccountError> = .failure(.network("未开始"))
-        session.dataTask(with: req) { data, resp, err in
+        let task = session.dataTask(with: req) { data, resp, err in
             defer { sem.signal() }
             if let err {
                 result = .failure(.network(err.localizedDescription))
@@ -144,8 +166,19 @@ enum AccountAPI {
             }
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
             result = .success((data ?? Data(), code))
-        }.resume()
-        sem.wait()
+        }
+        task.resume()
+        if let cancel {
+            // 退出登录要能立刻撒手，不然这条请求最长会占着队列 20 秒
+            while sem.wait(timeout: .now() + 0.3) == .timedOut {
+                if cancel.isCancelled {
+                    task.cancel()
+                    return .failure(.cancelled)
+                }
+            }
+        } else {
+            sem.wait()
+        }
         return result
     }
 
@@ -204,6 +237,14 @@ enum AccountAPI {
     // MARK: 个人资料
 
     struct Profile {
+        var email: String
+        var displayName: String
+        var hasAvatar: Bool
+    }
+
+    /// 本地缓存的资料。重新登录时先拿它把名字头像摆上，网络回来再刷新——
+    /// 否则中间那几秒会显示成「邮箱 + 首字母」，看着像改过的资料丢了。
+    struct CachedProfile: Codable {
         var email: String
         var displayName: String
         var hasAvatar: Bool
@@ -383,8 +424,11 @@ enum AccountAPI {
 
     // MARK: 清单
 
-    static func manifest(token: String) -> Result<RemoteManifest, AccountError> {
-        switch send(request("/api/sync/manifest", token: token)) {
+    static func manifest(token: String, cancel: CancelToken? = nil,
+                         timeout: TimeInterval = 20) -> Result<RemoteManifest, AccountError> {
+        var req = request("/api/sync/manifest", token: token)
+        req.timeoutInterval = timeout
+        switch send(req, cancel: cancel) {
         case let .failure(e):
             return .failure(e)
         case let .success((data, code)):
@@ -396,7 +440,8 @@ enum AccountAPI {
     }
 
     /// ifMatch 传上一次拿到的 rev；服务器发现对不上会返回 409，不覆盖别人的改动
-    static func putManifest(token: String, ifMatch: Int, items: [RemoteItem], order: [String])
+    static func putManifest(token: String, ifMatch: Int, items: [RemoteItem], order: [String],
+                            cancel: CancelToken? = nil)
         -> Result<(Int, RemoteManifest?), AccountError> {
         let enc = JSONEncoder()
         let payload: [String: Any] = [
@@ -406,7 +451,7 @@ enum AccountAPI {
         let body = try? JSONSerialization.data(withJSONObject: payload)
         let req = request("/api/sync/manifest", method: "PUT", token: token,
                           headers: ["if-match": String(ifMatch)], body: body)
-        switch send(req) {
+        switch send(req, cancel: cancel) {
         case let .failure(e):
             return .failure(e)
         case let .success((data, code)):
@@ -426,7 +471,9 @@ enum AccountAPI {
     typealias UploadProgress = (Int64, Int64) -> Void
 
     static func upload(token: String, id: String, file: URL,
+                       cancel: CancelToken? = nil,
                        onProgress: UploadProgress? = nil) -> Result<String, AccountError> {
+        if cancel?.isCancelled == true { return .failure(.cancelled) }
         guard let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int64 else {
             return .failure(.network("读不到文件"))
         }
@@ -440,7 +487,7 @@ enum AccountAPI {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 60
         cfg.timeoutIntervalForResource = 3600
-        let sink = UploadSink(expected: size, onProgress: onProgress)
+        let sink = UploadSink(expected: size, cancel: cancel, onProgress: onProgress)
         let session = URLSession(configuration: cfg, delegate: sink, delegateQueue: nil)
         let task = session.uploadTask(with: req, fromFile: file)
         sink.bind(task)
@@ -448,6 +495,7 @@ enum AccountAPI {
 
         if !sink.wait() {
             session.invalidateAndCancel()
+            if sink.wasCancelled { return .failure(.cancelled) }
             return .failure(.network("上传超时，网络好像卡住了"))
         }
         session.finishTasksAndInvalidate()
@@ -463,12 +511,14 @@ enum AccountAPI {
         return .success((json(data)["sha256"] as? String) ?? "")
     }
 
-    static func download(token: String, id: String, to: URL) -> Result<Void, AccountError> {
+    static func download(token: String, id: String, to: URL,
+                         cancel: CancelToken? = nil) -> Result<Void, AccountError> {
+        if cancel?.isCancelled == true { return .failure(.cancelled) }
         var req = request("/api/sync/asset/\(id)", token: token)
         req.timeoutInterval = 3600
         let sem = DispatchSemaphore(value: 0)
         var result: Result<Void, AccountError> = .failure(.network("未开始"))
-        session.downloadTask(with: req) { tmp, resp, err in
+        let task = session.downloadTask(with: req) { tmp, resp, err in
             defer { sem.signal() }
             if let err {
                 result = .failure(.network(err.localizedDescription))
@@ -488,13 +538,22 @@ enum AccountAPI {
             } catch {
                 result = .failure(.network(error.localizedDescription))
             }
-        }.resume()
-        sem.wait()
+        }
+        task.resume()
+        // 轮询而不是死等：退出登录时能立刻撒手，不用等这一张下完
+        let deadline = Date().addingTimeInterval(3600)
+        while sem.wait(timeout: .now() + 0.5) == .timedOut {
+            if cancel?.isCancelled == true {
+                task.cancel()
+                return .failure(.cancelled)
+            }
+            if Date() > deadline { task.cancel(); return .failure(.network("下载超时")) }
+        }
         return result
     }
 
-    static func deleteAsset(token: String, id: String) {
-        _ = send(request("/api/sync/asset/\(id)", method: "DELETE", token: token))
+    static func deleteAsset(token: String, id: String, cancel: CancelToken? = nil) {
+        _ = send(request("/api/sync/asset/\(id)", method: "DELETE", token: token), cancel: cancel)
     }
 }
 
@@ -502,6 +561,7 @@ enum AccountAPI {
 /// 平台侧偶尔会把连接挂住，如果不管，界面上就是「一直 0%」，等一小时也不会自己好。
 private final class UploadSink: NSObject, URLSessionDataDelegate {
     private let expected: Int64
+    private let cancel: CancelToken?
     private let onProgress: AccountAPI.UploadProgress?
     private let sem = DispatchSemaphore(value: 0)
     private var task: URLSessionUploadTask?
@@ -512,20 +572,29 @@ private final class UploadSink: NSObject, URLSessionDataDelegate {
     private(set) var payload = Data()
     private(set) var status = 0
     private(set) var error: Error?
+    /// 是被「退出登录 / 换账号」掐掉的，不是网络问题——调用方据此区分报错文案
+    private(set) var wasCancelled = false
 
     /// 多少秒没有任何字节推进就判定卡住
     // 慢链路 + 平台代理缓冲时，进度回调之间可能出现较长空档；
     // 120 秒太激进（实测把正常上传掐了两次），放宽到 5 分钟。
     private let stallSeconds: TimeInterval = 300
 
-    init(expected: Int64, onProgress: AccountAPI.UploadProgress?) {
+    init(expected: Int64, cancel: CancelToken?, onProgress: AccountAPI.UploadProgress?) {
         self.expected = expected
+        self.cancel = cancel
         self.onProgress = onProgress
         super.init()
+        // 每秒看一次：既看有没有卡住，也看有没有被要求取消
         let t = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        t.schedule(deadline: .now() + stallSeconds, repeating: 10)
+        t.schedule(deadline: .now() + 1, repeating: 1)
         t.setEventHandler { [weak self] in
             guard let self else { return }
+            if self.cancel?.isCancelled == true {
+                self.lock.lock(); self.wasCancelled = true; self.lock.unlock()
+                self.task?.cancel()
+                return
+            }
             self.lock.lock()
             let idle = Date().timeIntervalSince(self.lastActive)
             self.lock.unlock()
@@ -544,10 +613,19 @@ private final class UploadSink: NSObject, URLSessionDataDelegate {
     }
 
     func wait() -> Bool {
-        let r = sem.wait(timeout: .now() + 3600)
+        let deadline = Date().addingTimeInterval(3600)
+        var gotResult = false
+        while true {
+            if sem.wait(timeout: .now() + 0.5) == .success { gotResult = true; break }
+            if cancel?.isCancelled == true { break }
+            if Date() > deadline { break }
+        }
+        if !gotResult && cancel?.isCancelled == true {
+            lock.lock(); wasCancelled = true; task?.cancel(); lock.unlock()
+        }
         watchdog?.cancel()
         watchdog = nil
-        return r == .success
+        return gotResult && !wasCancelled
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
