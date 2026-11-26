@@ -1,4 +1,14 @@
-### F21.22 · 发版 3.44 / 66（账号系统） — 状态：`已出包，待上传 + 更新元数据`
+### D4 · 核查 v3.44 更新元数据已生效（无需修改） — 状态：`已验证`
+- **日期**：2026-11-26
+- **背景**：F21.22 记录的是发版前状态（`/api/update/check` 返回 `latest: null`），上线后需确认元数据是否已填。
+- **实测（18:56，线上真实环境）**：
+  - `GET /api/update/check?build=65&version=3.43&channel=stable&arch=arm64` → `update_available: true`、`latest.version=3.44`、`file_size=62019486`、`sha256=62fb3fe5…8a866`、`published_at=2026-11-26T18:40:49+08:00`
+  - `GET /api/download?v=3.44&channel=stable&arch=arm64` → 302，可正常跳转下载
+- **结论**：元数据已由官网侧更新，老用户能正常收到 3.44 提示，F21.22 的 ⚠️ 已解除。
+- **`build: 0` 无影响**：客户端 `Updater.swift:198` 注释明确「服务端 build 恒为 0，只能按版本号比」，`isNewer("3.44","3.43")` 成立，不依赖 build。
+- **剩余（非阻塞）**：`notes: null`（更新说明为空），需在官网后台补；`POST /api/admin/releases` 返回 401 需鉴权，本地无凭据，未做任何写入。
+
+### F21.22 · 发版 3.44 / 66（账号系统） — 状态：`已发布（GitHub + Gitee + 官网）`
 
 - **日期**：2026-11-26
 - **版本**：`Info.plist` 3.43/65 → **3.44/66**；10 个 README 的版本串同步
@@ -1322,6 +1332,22 @@
 ---
 
 ## Released
+
+### v3.44 / build 66 — 2026-11-26
+
+**主题：账号系统上线 —— 换一台 Mac，壁纸和调参自动跟着走。**
+
+- **账号登录与云同步**：注册 / 登录后壁纸库、微调参数、设置同步到云端；另一台 Mac 登录同账号自动拉回，逐张 sha256 一致。上传显示字节级进度，断网 / 退出自动续传。
+- **找回与设备管理**：恢复码重置密码（一次有效）；查看已登录设备并踢下线；改昵称 / 头像 / 密码（改完其他设备旧令牌立即失效）。
+- **紧凑账号窗口**：登录 / 资料 / 改密码收进 400×432 小窗。
+- **稳定性**：`sync.log` 限 256KB（超出只留最后 200 行）；本地视频导入不误裁片头片尾（沿用 3.43）。
+
+**发布产物与渠道：**
+- DMG：`dist/Dòng-3.44.dmg`，size `62019486`，sha256 `62fb3fe5397305397dc1c66a79a832430453cbdec3526712db79d16b3838a866`，`hdiutil verify` 通过；内 App 3.44/66。
+- **GitHub**：Release `v3.44`（**Latest**），资产 `Dong-3.44.dmg`（GitHub 规范化文件名），API digest 与上述 sha256 一致；此前 v3.41–v3.43 未建 Release，本次只补 v3.44。
+- **Gitee（国内）**：`https://gitee.com/dong-is-good/dong` 已同步 `main`（`15994ba`，代码 + 十语言 README 3.44，7 处链接本地化）+ tag `v3.44`；Release `v3.44`（id `1371790`）附件 `Dòng-3.44.dmg`，匿名下载 HTTP 200 / `Content-Length 62019486`。
+- **官网**：`/api/update/check` 返回 `latest.version=3.44 / build=66 / channel=stable`，notes 已填。
+- **签名**：仍为 ad-hoc（未做 Developer ID 公证），配合开源 + AI 提示词安装。
 
 ### v3.43 / build 65 — 2026-11-24
 
