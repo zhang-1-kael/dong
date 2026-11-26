@@ -96,6 +96,13 @@ enum SyncEngine {
     /// 不用只靠 UI 上那一句话猜。
     static func log(_ support: URL, _ msg: String) {
         let f = support.appendingPathComponent("sync.log")
+        // 超过 256KB 只留最后 200 行：日志是给排障用的，不该无限长大
+        if let size = (try? FileManager.default.attributesOfItem(atPath: f.path))?[.size] as? Int64,
+           size > 256 * 1024,
+           let text = try? String(contentsOf: f, encoding: .utf8) {
+            let tail = text.split(separator: "\n").suffix(200).joined(separator: "\n")
+            try? tail.write(to: f, atomically: true, encoding: .utf8)
+        }
         let ts = ISO8601DateFormatter().string(from: Date())
         guard let data = "\(ts) \(msg)\n".data(using: .utf8) else { return }
         if let fh = try? FileHandle(forWritingTo: f) {
