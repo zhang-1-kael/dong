@@ -3932,6 +3932,8 @@ final class LibraryWindowController: NSWindowController, NSPopoverDelegate {
 
     private func hideAccountPanel() {
         guard let panel = accountPanel, !panel.isHidden else { return }
+        // 还在改名就顺手存掉
+        panel.page.finishRenameIfNeeded()
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.16
             panel.animator().alphaValue = 0

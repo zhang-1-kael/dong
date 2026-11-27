@@ -294,6 +294,7 @@ final class PassthroughView: NSView {
 final class HoverZone: NSView {
 
     var onHover: ((Bool) -> Void)?
+    var onTap: (() -> Void)?
     private var tracking: NSTrackingArea?
 
     override func updateTrackingAreas() {
@@ -308,6 +309,24 @@ final class HoverZone: NSView {
 
     override func mouseEntered(with event: NSEvent) { onHover?(true) }
     override func mouseExited(with event: NSEvent) { onHover?(false) }
+    override func mouseDown(with event: NSEvent) {
+        if ProcessInfo.processInfo.environment["VW_RENAME_TRACE"] != nil {
+            print("[trace] HoverZone.mouseDown onTap=\(onTap != nil)")
+        }
+        onTap?()
+    }
+
+    override func resetCursorRects() {
+        if onTap != nil { addCursorRect(bounds, cursor: .iBeam) }
+    }
+
+    /// 整块区域接管点击。
+    /// 两个原因：① 名字是 NSTextField，会把点击吃掉；② 铅笔平时 alpha 为 0，
+    /// **AppKit 的命中测试会跳过透明视图**——只有悬浮那一瞬间才点得到（用户 2026-11-27 踩到）。
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, alphaValue > 0 else { return nil }
+        return bounds.contains(convert(point, from: superview)) ? self : nil
+    }
 }
 
 // MARK: - 账号面板
@@ -437,6 +456,8 @@ final class AccountPageController: NSViewController {
 
     /// 头像槽位（悬停徽标挂在它身上）
     private var avatarSlot: AvatarSlot?
+    /// 名字 + 铅笔的悬停区
+    private var nameZone: HoverZone?
 
     /// 内容高度变化时通知外层（面板据此重新摆位置）
     var onSizeChange: ((CGFloat) -> Void)?
@@ -565,7 +586,7 @@ final class AccountPageController: NSViewController {
         authCode = nil; authSend = nil; authCodeRow = nil
         profAvatar = nil; profName = nil; profEmail = nil; profStatus = nil
         syncSummary = nil; syncQuota = nil; syncBar = nil; syncFoot = nil; syncButton = nil
-        nameField = nil; pencilButton = nil; avatarSlot = nil
+        nameField = nil; pencilButton = nil; avatarSlot = nil; nameZone = nil
         pwOld = nil; pwNew = nil; pwConfirm = nil; pwStatus = nil; pwSave = nil
     }
 
@@ -954,7 +975,10 @@ final class AccountPageController: NSViewController {
         let nameRow = HoverZone()
         nameRow.translatesAutoresizingMaskIntoConstraints = false
         nameRow.onHover = { [weak self] on in self?.setPencilVisible(on) }
+        // 名字本身也能点：铅笔太小，别逼着用户去戳 15pt 的圆点
+        nameRow.onTap = { [weak self] in self?.beginRename() }
         header.addSubview(nameRow)
+        nameZone = nameRow
 
         let name = text("", size: 14.5, weight: .medium)
         name.lineBreakMode = .byTruncatingTail
@@ -1123,7 +1147,7 @@ final class AccountPageController: NSViewController {
 
     /// 名字区悬停：铅笔淡入淡出（常驻太扎眼）
     private func setPencilVisible(_ on: Bool) {
-        guard let pencil = pencilButton else { return }
+        guard !renaming, let pencil = pencilButton else { return }
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             pencil.animator().alphaValue = on ? 1 : 0
@@ -1144,6 +1168,54 @@ final class AccountPageController: NSViewController {
                                              eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
             win.sendEvent(e)
         }
+    }
+
+    /// 面板要收起时调用：还在改名就先提交，别让用户改了一半丢了
+    func finishRenameIfNeeded() {
+        if renaming { commitRename() }
+    }
+
+    /// 调试用：走一遍完整改名（起名 → 填字 → 提交），核对服务端是否真的改了
+    func debugRenameEndToEnd(_ newName: String) {
+        beginRename()
+        guard let f = nameField else { print("[rename] 没进入改名态"); return }
+        f.stringValue = newName
+        commitRename()
+        print("[rename] 已提交「\(newName)」")
+    }
+
+    /// 调试用：当前是否在改名态（无头核对用）
+    func debugRenameState() -> String {
+        "renaming=\(renaming) field=\(nameField != nil) name=\(profName?.stringValue ?? "nil")"
+    }
+
+    /// 调试用：在铅笔上合成一次真实点击
+    func debugClickPencil() {
+        guard let pencil = pencilButton, let win = view.window else { print("[rename] 没有铅笔"); return }
+        let inWin = pencil.convert(NSPoint(x: pencil.bounds.midX, y: pencil.bounds.midY), to: nil)
+        var types: [NSEvent.EventType] = [.leftMouseDown, .leftMouseUp]
+        if ProcessInfo.processInfo.environment["VW_PENCIL_NOUP"] != nil { types = [.leftMouseDown] }
+        for type in types {
+            guard let e = NSEvent.mouseEvent(with: type, location: inWin, modifierFlags: [],
+                                             timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: win.windowNumber, context: nil,
+                                             eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+            win.sendEvent(e)
+        }
+    }
+
+    /// 调试用：把系统鼠标真的移到名字区中心（验证 NSTrackingArea 悬停是否生效）
+    func debugMoveMouseToName() {
+        guard let zone = nameZone, let win = view.window, let screen = win.screen else {
+            print("[hover] 没有名字区"); return
+        }
+        let inWin = zone.convert(NSPoint(x: zone.bounds.midX, y: zone.bounds.midY), to: nil)
+        let onScreen = win.convertPoint(toScreen: inWin)
+        // CGEvent 的全局坐标原点在主屏左上角，NS 是左下角，要翻一下
+        let flipped = NSPoint(x: onScreen.x, y: screen.frame.maxY - onScreen.y + screen.frame.minY)
+        CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                mouseCursorPosition: flipped, mouseButton: .left)?.post(tap: .cghidEventTap)
+        print("[hover] 鼠标移到名字区 \(Int(flipped.x)),\(Int(flipped.y))")
     }
 
     /// 调试用：打印头像 / 徽标两处的命中视图，确认点击能落到槽位上
@@ -1169,6 +1241,13 @@ final class AccountPageController: NSViewController {
     // MARK: 就地改名 / 换头像
 
     @objc private func beginRename() {
+        if ProcessInfo.processInfo.environment["VW_RENAME_TRACE"] != nil {
+            print("[trace] beginRename 进入 renaming=\(renaming) name=\(profName != nil)")
+        }
+        if ProcessInfo.processInfo.environment["VW_RENAME_DRYRUN"] != nil {
+            print("[rename] 铅笔点击链路通了：会进入改名态")
+            return
+        }
         guard !renaming, let name = profName, let header = name.superview else { return }
         renaming = true
         name.isHidden = true
@@ -1184,10 +1263,13 @@ final class AccountPageController: NSViewController {
         f.textColor = Ink.primary
         f.isBezeled = false
         f.drawsBackground = true
-        f.backgroundColor = Ink.inputFill
+        // 原来用半透明白，铺在白卡片上等于看不见——渲染截图里就是「点了没反应」
+        f.backgroundColor = .textBackgroundColor
         f.focusRingType = .none
         f.wantsLayer = true
-        f.layer?.cornerRadius = 5
+        f.layer?.cornerRadius = 6
+        f.layer?.borderWidth = 1
+        f.layer?.borderColor = Ink.edge.cgColor
         f.translatesAutoresizingMaskIntoConstraints = false
         f.delegate = self
         f.target = self
@@ -1199,13 +1281,21 @@ final class AccountPageController: NSViewController {
             f.leadingAnchor.constraint(equalTo: name.leadingAnchor, constant: -5),
             f.centerYAnchor.constraint(equalTo: name.centerYAnchor),
             f.widthAnchor.constraint(equalToConstant: 172),
-            f.heightAnchor.constraint(equalToConstant: 22),
+            f.heightAnchor.constraint(equalToConstant: 24),
         ])
-        f.window?.makeFirstResponder(f)
-        f.currentEditor()?.selectAll(nil)
+        // 先把窗口变 key 再给焦点：窗口不是 key 时 selectText 会「拿到焦点又立刻结束编辑」，
+        // 触发 controlTextDidEndEditing → 文本没变 → 直接取消，看起来就是「点了没反应」（踩过）
+        if let w = f.window {
+            w.makeKey()
+            w.makeFirstResponder(f)
+        }
+        f.selectText(nil)
     }
 
     @objc private func commitRename() {
+        if ProcessInfo.processInfo.environment["VW_RENAME_TRACE"] != nil {
+            print("[trace] commitRename 文本=\(nameField?.stringValue ?? "nil")")
+        }
         guard let f = nameField, let session = SyncCenter.shared.session else { return }
         let name = f.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let old = SyncCenter.shared.profile?.displayName ?? ""
@@ -1214,7 +1304,7 @@ final class AccountPageController: NSViewController {
             profStatus?.textColor = .systemRed
             return
         }
-        if name == old { cancelRename(); return }
+        if name.isEmpty || name == old { cancelRename(); return }
         endRenameField()
         DispatchQueue.global(qos: .userInitiated).async {
             let r = AccountAPI.updateDisplayName(token: session.token, name: name)
@@ -1237,6 +1327,12 @@ final class AccountPageController: NSViewController {
     }
 
     private func endRenameField() {
+        if ProcessInfo.processInfo.environment["VW_RENAME_TRACE"] != nil {
+            print("[trace] endRenameField 被调用")
+        }
+        if ProcessInfo.processInfo.environment["VW_RENAME_TRACE"] != nil {
+            print("[trace] endRenameField 被调用")
+        }
         nameField?.removeFromSuperview()
         nameField = nil
         renaming = false

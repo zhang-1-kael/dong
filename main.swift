@@ -843,6 +843,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if ProcessInfo.processInfo.environment["VW_ACCOUNT_CLICK"] != nil {
                             panel.page.debugClickAvatar()
                         }
+                        if let want = ProcessInfo.processInfo.environment["VW_RENAME_E2E"] {
+                            panel.page.debugRenameEndToEnd(want)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                                print("[rename] 服务端资料现在 = \(SyncCenter.shared.profile?.displayName ?? "nil")")
+                                exit(0)
+                            }
+                            return
+                        }
+                        if let want = ProcessInfo.processInfo.environment["VW_RENAME_E2E"] {
+                            panel.page.debugRenameEndToEnd(want)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                                print("[rename] 服务端资料现在 = \(SyncCenter.shared.profile?.displayName ?? "nil")")
+                                exit(0)
+                            }
+                            return
+                        }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_PENCIL"] != nil {
+                            NSApp.activate(ignoringOtherApps: true)
+                            self.libraryWC?.window?.makeKeyAndOrderFront(nil)
+                            panel.page.debugClickPencil()
+                            print("[rename] 已合成点击铅笔")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                print("[rename] 0.6s 后 " + panel.page.debugRenameState())
+                                panel.debugSnapshot(to: path)
+                                exit(0)
+                            }
+                            return
+                        }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_MOVEHOVER"] != nil {
+                            NSApp.activate(ignoringOtherApps: true)
+                            panel.page.debugMoveMouseToName()
+                            // 给悬停动画留点时间，再让下面的截图流程继续
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                panel.debugSnapshot(to: path)
+                                exit(0)
+                            }
+                            return
+                        }
                         if ProcessInfo.processInfo.environment["VW_ACCOUNT_HITTEST"] != nil {
                             panel.page.debugAvatarHitTest()
                         }

@@ -1,3 +1,25 @@
+### F21.28.3 · 修「改不了名字」 — 状态：`已修，已装机`
+
+- **日期**：2026-11-27 15:15
+- **用户反馈**：点名字旁的铅笔改不了名字（录屏里最终进的是「修改密码」页）。
+- **根因（三个叠在一起）**：
+  1. **透明视图不参与命中测试**：铅笔平时 `alphaValue = 0`，AppKit 的 `hitTest` 会跳过它，
+     只有悬停那一瞬间（alpha 动画中途）才点得到——手感上就是「时灵时不灵」
+  2. 名字本身是 `NSTextField`，点它会命中标签本身（不处理鼠标），事件不会走到改名逻辑
+  3. 输入框用 `Ink.inputFill`（半透明白），铺在白卡片上几乎看不见；
+     而且「失焦即提交」的 `controlTextDidEndEditing` 会在拿到焦点的一瞬间触发
+     → 文本没变 → 直接 `cancelRename`，等于点了就秒退
+- **修法**：
+  - `HoverZone` 覆盖 `hitTest` 整块接管（和头像槽位同一套做法）→ 点名字、点铅笔都进改名
+  - 名字区 cursor 改成 I-beam，提示这里可以编辑
+  - 输入框改成 `textBackgroundColor` + 1px 边框 + 圆角，高度 24，`selectText` 全选
+  - 去掉「失焦即提交」；改为 **回车提交 / Esc 取消 / 面板收起时保存**（`finishRenameIfNeeded`）
+  - 改名时铅笔不再被悬停重新点亮（`setPencilVisible` 里拦掉）
+- **验证**：命中表 + 合成点击（`VW_ACCOUNT_PENCIL=1`）实测进入改名态并留存
+  （`renaming=true field=true`）；截图核对输入框白底+边框+选中；
+  端到端（`VW_RENAME_E2E=小航` + 本地 server）确认服务端 `displayName` 真的变成「小航」
+- **调试钩子**：`VW_ACCOUNT_PENCIL`、`VW_RENAME_TRACE`、`VW_RENAME_E2E=<名字>`、`VW_PENCIL_NOUP`
+
 ### F21.28.2 · 修「点小相机换不了头像」 — 状态：`已修，已装机`
 
 - **日期**：2026-11-27 14:25
@@ -1259,6 +1281,50 @@
   - 悬停态：卡片四行清晰、行距均匀、无重叠；**第一版用 0.82 / 0.96 半透明，放大后能看到底下「自动暂停/自动轮换」标题透出灰影**，改为完全不透明深色（0.10,0.10,0.11）+ 1pt 细边后残影消失。
 - **本机装机（2026-11-25 20:15）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（2195936 B），重签 + `-v --deep --strict` 通过；重启 PID 36237。回滚备份 `/tmp/vw_bin_backup_before_feedback`。
 - **待用户**：打开设置 → 底部悬停「反馈」看卡片，点一下确认能拉起飞书进群。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F11.1 · 修双击菜单栏图标时悬停面板也弹出 — 状态：`已装机 / 待真机确认 / 待发版`
+- **日期**：2026-11-27
+- **用户反馈**（附 6.6s 录屏）：双击菜单栏果冻时，除了双击该打开的东西，切换壁纸的悬浮面板也会自己跳出来。
+- **根因**：F11 的悬停逻辑只认"鼠标停住 0.22s"，双击时鼠标必然停在图标上；且原来双击没有专属语义——两次 `leftMouseUp` 各触发一次 `togglePanel`，第二下还会受 0.7s 冷却影响，表现为面板开关乱抖。
+- **修法**：
+  - **双击有了明确语义：只打开壁纸库**（`openLibraryByDoubleClick()`）。
+  - 双击判定：`clickCount >= 2`，并用「两次点击间隔 < 0.35s」兜底（状态栏按钮的 clickCount 偶尔不准）。
+  - 双击时：取消待执行的单击 → `cancelHoverOpen()` → 收起已弹出的悬停面板 → 设静默期 → `showLibrary()`。
+  - **静默期从 `showLibrary()` 返回之后开始算 1.2s**：`showLibrary` 会重扫库+刷新窗口占住主线程，若从点击时刻算，这段时间会把静默期吃掉、面板还会再弹一次（第一版就是这个问题，自测 `suppressed=false` 暴露出来）。
+  - `scheduleHoverOpen()` 开头检查静默期，期内不弹面板。
+  - 单击改为**延迟 0.24s** 再执行 `togglePanel`，双击时直接取消，面板不会先闪一下。
+- **改动文件**：`main.swift` — `statusClicked` 重写（双击分流 + 单击延迟）、新增 `openLibraryByDoubleClick()`、`hoverSuppressUntil` / `pendingStatusClick` / `lastStatusClickAt`、`scheduleHoverOpen` 增加静默期检查、`VW_DBL_TEST=1` 自测入口。
+- **验证（2026-11-27）**：`VW_DBL_TEST=1` 隔离环境自测：`beforePanel=true`（先造出悬停已弹面板）→ `afterPanel=false`（双击后面板收起）→ `suppressed=true` → 静默期内再触发悬停 `reHoverPanel=false`，四项全符合预期。
+  - 说明：`clickCount` 的真实事件识别无法在本机自动验证（`buttonScreenFrame()` 在状态栏窗口上有 ~24pt 偏移，CGEvent 点击打不中图标），所以加了间隔兜底，需真机确认。
+- **本机装机（2026-11-27 14:57）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（2388920 B），重签 + `-v --deep --strict` 通过；重启 PID 22549。回滚备份 `/tmp/vw_bin_backup_before_doubleclick`。
+- **待用户**：双击菜单栏果冻，确认只开壁纸库、不弹面板；单击仍能开面板；悬停仍能自动弹。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F11.2 · 双击必须无条件关掉悬停面板（F11.1 未生效后的二次修复） — 状态：`已装机 / 待真机确认 / 待发版`
+- **日期**：2026-11-27
+- **用户反馈**：F11.1 装上后问题仍在。用户描述的真实顺序是「先把鼠标放上去（悬停已弹面板）→ 再双击」，此时不管怎么点面板都会开。
+- **根因（重新判断）**：F11.1 依赖 `NSApp.currentEvent.clickCount >= 2`，但 `NSStatusBarButton` 双击时第二下给到的 clickCount 并不一定是 2；若两下都按「单击」处理，`togglePanel` 会执行两次（关→开），结果面板依然是打开的 —— 与用户描述完全吻合。
+- **修法**：
+  - **判定改为「clickCount ≥ 2 **或** 两次点击间隔 < 0.45s」**，以间隔为主：这是用户真正做出的动作，不依赖系统给的计数。
+  - 双击统一走 `openLibraryByDoubleClick()`：`closePanelHard()` → `showLibrary()` → 静默期；并用 `lastDoubleHandled` 做 0.4s 幂等（避免两条通路重复开库）。
+  - `closePanelHard()`：`cancelHoverOpen()` + 停轮询 + 静默期 1.5s + 立即 `dismiss()`，再在 0.12s / 0.35s 两个时间点兜底检查，若面板又开着就再关一次、并续静默期。
+  - 去掉 F11.1 的「单击延迟 0.24s」：它会让单击变钝，且与双击取消逻辑相互干扰。单击恢复即时响应。
+- **改动文件**：`main.swift` — `statusClicked` 重写、`openLibraryByDoubleClick()`、`closePanelHard()`、`lastDoubleHandled` / `lastStatusClickAt`、`VW_DBL_TEST` 改为复现真实顺序（悬停弹出 → 等冷却 → 连点两下）。
+- **验证（2026-11-27）**：`VW_DBL_TEST=1` 复现用户顺序（先 `openPanelByHover` 造出面板、等 0.8s 过冷却、再连调两次点击）：`beforePanel=true → afterPanel=false`，`suppressed=true`，即面板确实被关掉。另测了「关掉后悬停又抢一次」的极端竞争，兜底能二次关闭。
+- **本机装机（2026-11-27 15:10）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（2391496 B），重签 + `-v --deep --strict` 通过；重启 PID 30238。回滚备份 `/tmp/vw_bin_backup_before_dbl2`。
+- **待用户**：按真实顺序试——鼠标放到图标上等面板出来，再双击，确认面板一定消失、壁纸库打开；再确认单击/悬停没被破坏。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
+
+### F11.3 · 右键时先收掉悬停面板（不再和右键菜单叠在一起） — 状态：`已装机 / 待真机确认 / 待发版`
+- **日期**：2026-11-27
+- **用户反馈**：右键弹出的菜单和悬停面板叠在一起，和双击那次是同一类问题；右键时应该只剩右键菜单。
+- **根因**：`statusClicked` 的右键分支直接 `showSystemMenu()`，没有处理已经开着的悬停面板。
+- **修法**：
+  - 新增 `prepareForContextMenu()`：`cancelHoverOpen()` + 停轮询 + 静默期 1.5s + **`dismissImmediately()`**，右键分支先调它再弹菜单。
+  - `Panel.swift` 新增 `dismissImmediately()`：跳过 0.1s 退场动画，直接 `alphaValue = 0` + `orderOut`。用原来的 `dismiss()` 的话，菜单已经弹出来了、面板还在播收起动画，短瞬间仍然重叠。
+  - 双击的 `closePanelHard()` 也一并改用 `dismissImmediately()`（更干脆，不和壁纸库窗口抢那一帧）。
+- **改动文件**：`Panel.swift`（`dismissImmediately`）、`main.swift`（右键分支 + `prepareForContextMenu` + `VW_RIGHT_TEST` 自测入口）。
+- **验证（2026-11-27）**：`VW_RIGHT_TEST=1`：先 `openPanelByHover` 造出面板 → `prepareForContextMenu()` → `beforePanel=true / afterPanel=false / suppressed=true`，面板被立刻收掉、静默期生效。
+- **本机装机（2026-11-27 15:17）**：最小替换 `/Applications/Dòng.app/Contents/MacOS/VideoWallpaper`（2415328 B），重签 + `-v --deep --strict` 通过；重启 PID 34556。回滚备份 `/tmp/vw_bin_backup_before_rightmenu`。
+- **待用户**：悬停让面板出来 → 右键，确认只剩右键菜单；再确认右键菜单关掉后悬停/点击都正常。确认后随下一版本统一发布（不单独发版、不 bump 版本）。
 
 ### D1 · GitHub README 增加飞书用户群入口 — 状态：`已上线（文档，无需发版）`
 - **日期**：2026-11-16
