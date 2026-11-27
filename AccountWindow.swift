@@ -196,7 +196,10 @@ final class AvatarSlot: NSView {
 
     var onPick: (() -> Void)?
 
-    private let badge = NSView()
+    private let badge = PassthroughView()
+
+    /// 调试用：徽标本身（命中测试取点）
+    var badgeView: NSView { badge }
     private let camera = NSImageView()
     private var tracking: NSTrackingArea?
 
@@ -204,6 +207,8 @@ final class AvatarSlot: NSView {
         super.init(frame: frameRect)
 
         avatar.translatesAutoresizingMaskIntoConstraints = false
+        // 点头像本身也要能换：AvatarView 自己的 mouseDown 只认 onTap
+        avatar.onTap = { [weak self] in self?.onPick?() }
         addSubview(avatar)
 
         badge.wantsLayer = true
@@ -257,6 +262,14 @@ final class AvatarSlot: NSView {
     override func mouseExited(with event: NSEvent) { setBadgeVisible(false) }
     override func mouseDown(with event: NSEvent) { onPick?() }
 
+    /// 整块槽位统一接管点击。
+    /// 头像里的「首字母」是个 NSTextField，默认会把点击吃掉——不覆盖 hitTest 的话，
+    /// 点头像正中（正好压在字母上）是没反应的（用户 2026-11-27 踩到）。
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, alphaValue > 0 else { return nil }
+        return bounds.contains(convert(point, from: superview)) ? self : nil
+    }
+
     private func setBadgeVisible(_ on: Bool) {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.14
@@ -270,6 +283,11 @@ final class AvatarSlot: NSView {
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
     }
+}
+
+/// 只负责显示、不接管鼠标的视图（徽标用）：点它也要落到下层的头像槽位上
+final class PassthroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// 一小块「鼠标进来才显示某样东西」的区域（名字旁的铅笔用）
@@ -1115,6 +1133,33 @@ final class AccountPageController: NSViewController {
     /// 调试用：直接进入改名态（截图核对用）
     func debugBeginRename() { beginRename() }
 
+    /// 调试用：在头像中心合成一次真实点击，走窗口事件分发（验证整条链路）
+    func debugClickAvatar() {
+        guard let slot = avatarSlot, let win = view.window else { print("[pick] 没有窗口"); return }
+        let p = slot.convert(NSPoint(x: slot.bounds.midX, y: slot.bounds.midY), to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            guard let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [],
+                                             timestamp: ProcessInfo.processInfo.systemUptime,
+                                             windowNumber: win.windowNumber, context: nil,
+                                             eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+            win.sendEvent(e)
+        }
+    }
+
+    /// 调试用：打印头像 / 徽标两处的命中视图，确认点击能落到槽位上
+    func debugAvatarHitTest() {
+        guard let slot = avatarSlot, let win = view.window, let content = win.contentView else {
+            print("[hit] 没有头像槽位"); return
+        }
+        view.layoutSubtreeIfNeeded()
+        let probes: [(String, NSView)] = [("头像中心", slot.avatar), ("徽标中心", slot.badgeView)]
+        for (name, target) in probes {
+            let p = target.convert(NSPoint(x: target.bounds.midX, y: target.bounds.midY), to: content)
+            let hit = content.hitTest(p)
+            print("[hit] \(name) \(Int(p.x)),\(Int(p.y)) -> \(hit.map { String(describing: type(of: $0)) } ?? "nil")")
+        }
+    }
+
     /// 调试用：强制显示悬停才出现的东西（无头截图核对）
     func debugShowHover() {
         setPencilVisible(true)
@@ -1203,12 +1248,18 @@ final class AccountPageController: NSViewController {
 
     /// 换头像：选图 → 裁方 → 上传，完成后直接刷新头部
     @objc private func pickAvatar() {
+        if ProcessInfo.processInfo.environment["VW_PICK_DRYRUN"] != nil {
+            print("[pick] 点击链路通了：会打开选图面板（dry run）")
+            return
+        }
         guard let session = SyncCenter.shared.session else { return }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.png, .jpeg]
         panel.message = "选一张图片做头像（会自动裁成方形）"
+        // 菜单栏 App 常常不在最前，不激活的话这个面板会开在后面，看着像「点了没反应」
+        NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url,
               let img = NSImage(contentsOf: url) else { return }
         guard let data = Self.squarePNG(img, side: 256) else {

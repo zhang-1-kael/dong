@@ -1,3 +1,24 @@
+### F21.28.2 · 修「点小相机换不了头像」 — 状态：`已修，已装机`
+
+- **日期**：2026-11-27 14:25
+- **用户反馈**：悬停能看到小相机了，但点下去没反应，换不了头像。
+- **根因（两层都被吃掉点击）**：
+  1. `AvatarSlot` 建好后没有给 `avatar.onTap` 接线，点头像本身什么也不做
+  2. 徽标 `badge` 是普通 `NSView`，点它命中的是 badge 自己（`mouseDown` 空实现），
+     事件不会冒泡到槽位
+  3. 更隐蔽的一层：头像里的**首字母是个 `NSTextField`**，点头像正中（压在字母上）命中的是它，
+     同样什么也不做——所以「点头像没反应」和「点相机没反应」是两个不同的坑
+- **修法**：
+  - `AvatarSlot` 覆盖 `hitTest`，整块 48×48 一律返回自己 → `mouseDown` → `onPick`
+  - 徽标改用 `PassthroughView`（`hitTest` 返回 nil），不再拦事件
+  - 给 `avatar.onTap` 补上接线（双保险）
+  - 打开 `NSOpenPanel` 前 `NSApp.activate(ignoringOtherApps: true)`——菜单栏 App 不在最前时，
+    面板会开在别的窗口后面，看着像「点了没反应」
+- **验证**：`VW_ACCOUNT_HITTEST=1` 命中表（头像中心 / 徽标中心 → 都是 `AvatarSlot`）；
+  `VW_ACCOUNT_CLICK=1` + `VW_PICK_DRYRUN=1` 用 `window.sendEvent` 合成真实点击，
+  打出「点击链路通了：会打开选图面板」——整条 事件→hitTest→mouseDown→pickAvatar 走通
+- **装机**：`pkill -9 -f VideoWallpaper`（SIGTERM 拦得住）→ 替换 → 核对新 PID inode 与磁盘一致（11254157）
+
 ### F21.28.1 · 铅笔/相机徽标改为「悬停才出现」 — 状态：`已改，已装机`
 
 - **日期**：2026-11-27 14:05

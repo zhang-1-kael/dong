@@ -837,6 +837,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if ProcessInfo.processInfo.environment["VW_ACCOUNT_HOVER"] != nil {
                             panel.page.debugShowHover()
                         }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_HITTEST"] != nil {
+                            panel.page.debugAvatarHitTest()
+                        }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_CLICK"] != nil {
+                            panel.page.debugClickAvatar()
+                        }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_HITTEST"] != nil {
+                            panel.page.debugAvatarHitTest()
+                        }
                         if ProcessInfo.processInfo.environment["VW_ACCOUNT_HOVER"] != nil {
                             panel.page.debugShowHover()
                         }
