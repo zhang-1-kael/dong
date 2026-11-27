@@ -186,48 +186,62 @@ final class GhostButton: NSButton {
 
 // MARK: - 可换的头像
 
-/// 头像：鼠标移上去浮一层半透明的「相机」，点一下选图。
-final class HoverAvatarView: AvatarView {
+/// 头像槽位：46 的圆头像 + 右下角一颗 18 的小相机徽标。
+///
+/// 徽标必须放在**圆外面**——塞进头像视图里会被 masksToBounds 的圆形裁掉一个缺口。
+/// 徽标只在鼠标进入这块区域时淡入，平时完全不可见（用户要求别影响美观）。
+final class AvatarSlot: NSView {
+
+    let avatar = AvatarView()
 
     var onPick: (() -> Void)?
 
-    private let veil = NSView()
+    private let badge = NSView()
     private let camera = NSImageView()
     private var tracking: NSTrackingArea?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
 
-        veil.wantsLayer = true
-        veil.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.40).cgColor
-        veil.isHidden = true
-        veil.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(veil)
+        avatar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(avatar)
 
-        camera.image = NSImage(systemSymbolName: "camera.fill", accessibilityDescription: "换一张头像")
+        badge.wantsLayer = true
+        badge.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.55).cgColor
+        badge.layer?.borderWidth = 1
+        badge.layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
+        badge.layer?.cornerRadius = 9
+        badge.alphaValue = 0
+        badge.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(badge)
+
+        let cfg = NSImage.SymbolConfiguration(pointSize: 8.5, weight: .semibold)
+        camera.image = NSImage(systemSymbolName: "camera.fill",
+                               accessibilityDescription: "换一张头像")?.withSymbolConfiguration(cfg)
         camera.contentTintColor = .white
         camera.imageScaling = .scaleProportionallyDown
         camera.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(camera)
+        // 必须挂在徽标下面：挂在外层的话徽标淡出了、图标还留在头像上（踩过）
+        badge.addSubview(camera)
 
         NSLayoutConstraint.activate([
-            veil.leadingAnchor.constraint(equalTo: leadingAnchor),
-            veil.trailingAnchor.constraint(equalTo: trailingAnchor),
-            veil.topAnchor.constraint(equalTo: topAnchor),
-            veil.bottomAnchor.constraint(equalTo: bottomAnchor),
-            camera.centerXAnchor.constraint(equalTo: centerXAnchor),
-            camera.centerYAnchor.constraint(equalTo: centerYAnchor),
-            camera.widthAnchor.constraint(equalToConstant: 17),
-            camera.heightAnchor.constraint(equalToConstant: 14),
+            avatar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            avatar.topAnchor.constraint(equalTo: topAnchor),
+            avatar.widthAnchor.constraint(equalToConstant: 46),
+            avatar.heightAnchor.constraint(equalToConstant: 46),
+
+            badge.widthAnchor.constraint(equalToConstant: 18),
+            badge.heightAnchor.constraint(equalToConstant: 18),
+            badge.trailingAnchor.constraint(equalTo: trailingAnchor),
+            badge.bottomAnchor.constraint(equalTo: bottomAnchor),
+            camera.centerXAnchor.constraint(equalTo: badge.centerXAnchor),
+            camera.centerYAnchor.constraint(equalTo: badge.centerYAnchor),
+            camera.widthAnchor.constraint(equalToConstant: 10),
+            camera.heightAnchor.constraint(equalToConstant: 9),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-    override func layout() {
-        super.layout()
-        veil.layer?.cornerRadius = bounds.width / 2
-    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -239,13 +253,43 @@ final class HoverAvatarView: AvatarView {
         tracking = t
     }
 
-    override func mouseEntered(with event: NSEvent) { veil.isHidden = false }
-    override func mouseExited(with event: NSEvent) { veil.isHidden = true }
+    override func mouseEntered(with event: NSEvent) { setBadgeVisible(true) }
+    override func mouseExited(with event: NSEvent) { setBadgeVisible(false) }
     override func mouseDown(with event: NSEvent) { onPick?() }
+
+    private func setBadgeVisible(_ on: Bool) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.14
+            badge.animator().alphaValue = on ? 1 : 0
+        }
+    }
+
+    /// 调试用：强制显示徽标（无头截图核对）
+    func debugShowBadge() { badge.alphaValue = 1 }
 
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: .pointingHand)
     }
+}
+
+/// 一小块「鼠标进来才显示某样东西」的区域（名字旁的铅笔用）
+final class HoverZone: NSView {
+
+    var onHover: ((Bool) -> Void)?
+    private var tracking: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let t = tracking { removeTrackingArea(t) }
+        let t = NSTrackingArea(rect: .zero,
+                               options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
 }
 
 // MARK: - 账号面板
@@ -372,6 +416,9 @@ final class AccountPageController: NSViewController {
     private var nameField: NSTextField?
     private var pencilButton: NSButton?
     private var renaming = false
+
+    /// 头像槽位（悬停徽标挂在它身上）
+    private var avatarSlot: AvatarSlot?
 
     /// 内容高度变化时通知外层（面板据此重新摆位置）
     var onSizeChange: ((CGFloat) -> Void)?
@@ -500,7 +547,7 @@ final class AccountPageController: NSViewController {
         authCode = nil; authSend = nil; authCodeRow = nil
         profAvatar = nil; profName = nil; profEmail = nil; profStatus = nil
         syncSummary = nil; syncQuota = nil; syncBar = nil; syncFoot = nil; syncButton = nil
-        nameField = nil; pencilButton = nil
+        nameField = nil; pencilButton = nil; avatarSlot = nil
         pwOld = nil; pwNew = nil; pwConfirm = nil; pwStatus = nil; pwSave = nil
     }
 
@@ -877,23 +924,33 @@ final class AccountPageController: NSViewController {
         header.heightAnchor.constraint(equalToConstant: 54).isActive = true
         stack.setCustomSpacing(12, after: header)
 
-        // 头像：悬停出「换一张」，点一下选图
-        let avatar = HoverAvatarView()
-        avatar.translatesAutoresizingMaskIntoConstraints = false
-        avatar.onPick = { [weak self] in self?.pickAvatar() }
-        header.addSubview(avatar)
-        profAvatar = avatar
+        // 头像：悬停才在右下角浮出一颗小相机，点一下选图
+        let slot = AvatarSlot()
+        slot.translatesAutoresizingMaskIntoConstraints = false
+        slot.onPick = { [weak self] in self?.pickAvatar() }
+        header.addSubview(slot)
+        profAvatar = slot.avatar
+        avatarSlot = slot
+
+        // 名字 + 铅笔收在一个悬停区里：不悬停时铅笔完全透明，不碍眼
+        let nameRow = HoverZone()
+        nameRow.translatesAutoresizingMaskIntoConstraints = false
+        nameRow.onHover = { [weak self] on in self?.setPencilVisible(on) }
+        header.addSubview(nameRow)
 
         let name = text("", size: 14.5, weight: .medium)
         name.lineBreakMode = .byTruncatingTail
         name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         name.translatesAutoresizingMaskIntoConstraints = false
-        header.addSubview(name)
+        nameRow.addSubview(name)
         profName = name
 
-        let pencil = GhostButton(symbol: "pencil")
+        let pencil = GhostButton()
+        pencil.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: "改名字")?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8.5, weight: .medium))
         pencil.onClick = { [weak self] in self?.beginRename() }
-        header.addSubview(pencil)
+        pencil.alphaValue = 0
+        nameRow.addSubview(pencil)
         pencilButton = pencil
 
         let status = text("", size: 10.5)
@@ -914,30 +971,35 @@ final class AccountPageController: NSViewController {
         header.addSubview(pw)
 
         NSLayoutConstraint.activate([
-            avatar.leadingAnchor.constraint(equalTo: header.leadingAnchor),
-            avatar.centerYAnchor.constraint(equalTo: header.centerYAnchor),
-            avatar.widthAnchor.constraint(equalToConstant: 46),
-            avatar.heightAnchor.constraint(equalToConstant: 46),
+            slot.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            slot.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            slot.widthAnchor.constraint(equalToConstant: 48),
+            slot.heightAnchor.constraint(equalToConstant: 48),
 
-            name.leadingAnchor.constraint(equalTo: avatar.trailingAnchor, constant: 12),
-            name.topAnchor.constraint(equalTo: header.topAnchor, constant: 2),
+            nameRow.leadingAnchor.constraint(equalTo: slot.trailingAnchor, constant: 11),
+            nameRow.topAnchor.constraint(equalTo: header.topAnchor, constant: 2),
+            nameRow.heightAnchor.constraint(equalToConstant: 20),
+
+            name.leadingAnchor.constraint(equalTo: nameRow.leadingAnchor),
+            name.centerYAnchor.constraint(equalTo: nameRow.centerYAnchor),
             name.widthAnchor.constraint(lessThanOrEqualToConstant: 160),
 
-            pencil.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 6),
-            pencil.centerYAnchor.constraint(equalTo: name.centerYAnchor),
-            pencil.widthAnchor.constraint(equalToConstant: 22),
-            pencil.heightAnchor.constraint(equalToConstant: 18),
+            pencil.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 5),
+            pencil.centerYAnchor.constraint(equalTo: nameRow.centerYAnchor),
+            pencil.widthAnchor.constraint(equalToConstant: 15),
+            pencil.heightAnchor.constraint(equalToConstant: 15),
+            pencil.trailingAnchor.constraint(equalTo: nameRow.trailingAnchor),
 
-            status.leadingAnchor.constraint(equalTo: pencil.trailingAnchor, constant: 8),
+            status.leadingAnchor.constraint(equalTo: nameRow.trailingAnchor, constant: 7),
             status.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor),
             status.trailingAnchor.constraint(lessThanOrEqualTo: pw.leadingAnchor, constant: -8),
 
-            mail.leadingAnchor.constraint(equalTo: name.leadingAnchor),
-            mail.topAnchor.constraint(equalTo: name.bottomAnchor, constant: 3),
+            mail.leadingAnchor.constraint(equalTo: nameRow.leadingAnchor),
+            mail.topAnchor.constraint(equalTo: nameRow.bottomAnchor, constant: 1),
             mail.trailingAnchor.constraint(lessThanOrEqualTo: pw.leadingAnchor, constant: -8),
 
             pw.trailingAnchor.constraint(equalTo: header.trailingAnchor),
-            pw.centerYAnchor.constraint(equalTo: avatar.centerYAnchor),
+            pw.centerYAnchor.constraint(equalTo: slot.centerYAnchor),
             pw.widthAnchor.constraint(equalToConstant: 64),
             pw.heightAnchor.constraint(equalToConstant: 23),
         ])
@@ -1041,8 +1103,23 @@ final class AccountPageController: NSViewController {
         onSizeChange?(h)
     }
 
+    /// 名字区悬停：铅笔淡入淡出（常驻太扎眼）
+    private func setPencilVisible(_ on: Bool) {
+        guard let pencil = pencilButton else { return }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            pencil.animator().alphaValue = on ? 1 : 0
+        }
+    }
+
     /// 调试用：直接进入改名态（截图核对用）
     func debugBeginRename() { beginRename() }
+
+    /// 调试用：强制显示悬停才出现的东西（无头截图核对）
+    func debugShowHover() {
+        setPencilVisible(true)
+        avatarSlot?.debugShowBadge()
+    }
 
     // MARK: 就地改名 / 换头像
 
@@ -1050,7 +1127,7 @@ final class AccountPageController: NSViewController {
         guard !renaming, let name = profName, let header = name.superview else { return }
         renaming = true
         name.isHidden = true
-        pencilButton?.isHidden = true
+        pencilButton?.alphaValue = 0
         // 输入框比名字宽，会把状态文字压住——改名期间先收起来
         profStatus?.isHidden = true
         // 输入框比名字宽，会把状态文字压住——改名期间先收起来
@@ -1119,7 +1196,7 @@ final class AccountPageController: NSViewController {
         nameField = nil
         renaming = false
         profName?.isHidden = false
-        pencilButton?.isHidden = false
+        pencilButton?.alphaValue = 0
         profStatus?.isHidden = false
         profStatus?.isHidden = false
     }

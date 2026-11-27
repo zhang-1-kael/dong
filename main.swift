@@ -834,6 +834,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if ProcessInfo.processInfo.environment["VW_ACCOUNT_RENAME"] != nil {
                             panel.page.debugBeginRename()
                         }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_HOVER"] != nil {
+                            panel.page.debugShowHover()
+                        }
+                        if ProcessInfo.processInfo.environment["VW_ACCOUNT_HOVER"] != nil {
+                            panel.page.debugShowHover()
+                        }
                         panel.debugSnapshot(to: path)
                         print("[account] panel size=\(panel.bounds.size) content=\(panel.contentHeight)")
                     }
